@@ -1,0 +1,9 @@
+[
+  {"name": "needs-spec", "color": "D4C5F9", "description": "Needs an explicit spec and acceptance scenarios"},
+  {"name": "ready-for-agent", "color": "0E8A16", "description": "Owner-approved scope; only the owner may apply"},
+  {"name": "in-progress", "color": "1D76DB", "description": "An approved task is being built"},
+  {"name": "blocked", "color": "B60205", "description": "A human decision or prerequisite is missing"},
+  {"name": "needs-human-review", "color": "FBCA04", "description": "Needs human review and merge"},
+  {"name": "bug", "color": "D73A4A", "description": "An existing behavior is incorrect"},
+  {"name": "idea", "color": "A2EEEF", "description": "A proposed change that needs a spec"}
+]
