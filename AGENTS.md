@@ -86,8 +86,8 @@ continuous-operation approval.
 Each workflow's main agent has a 5000-AI-credit limit, by owner decision.
 No monthly or daily budget is enforced.
 Staging does not make a run free.
-`GH_PAT` is configured for inference and assignment. Inference and staged
-assignment passed; live assignment permissions remain unverified.
+`GH_PAT` is configured for inference and assignment. Inference and live
+assignment passed in the M0 test recorded in `docs/bootstrap.md`.
 Do not read its value, expose it, or reuse local credentials.
 Do not start unrelated paid tests or enable deferred modules.
 

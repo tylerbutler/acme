@@ -4,8 +4,9 @@ A deterministic software-factory CLI, written in Rust. The binary will read
 `factory/factory.toml` and render the workflows and guardrails a project needs.
 It will not call an LLM. An agent skill will conduct the init interview.
 
-**Status: M0 bootstrap.** The factory is hand-built. `init`, `doctor`, `render`
-and `sync` do not exist yet. The binary exits with an explicit error.
+**Status: M0 factory loop verified.** The factory is hand-built. `init`,
+`doctor`, `render` and `sync` do not exist yet. The binary exits with an explicit
+error.
 
 ## Development
 
@@ -38,12 +39,12 @@ outputs and both variable gates set to `true`. Intake triages admin-opened
 issues. Build-cloud still requires the owner to add `ready-for-agent` to a
 specified issue. **These events can use paid AI credits.** Each main agent run
 has a 5000-AI-credit cap; monthly and daily budgets are off.
-Both authentication paths use `GH_PAT`. Inference and staged assignment passed;
-live assignment permissions remain unverified. See
+Both authentication paths use `GH_PAT`. Inference and live assignment passed. See
 [the bootstrap guide](docs/bootstrap.md) before enabling anything.
 
-M0's live issue-to-agent-PR acceptance check is not yet verified. Holdout,
-local builds, automated review, release and ops are deferred.
+The [M0 live-loop record](docs/bootstrap.md#verified-m0-loop) links the Copilot
+draft PR, passing CI and human merge. Holdout, local builds, automated review,
+release and ops are deferred.
 
 ## Template basis
 

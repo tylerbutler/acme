@@ -58,7 +58,7 @@ workflow_enabled = true
 assignment_enabled = true
 token_secret = "GH_PAT"
 token_configured = true
-token_verified = false
+token_verified = true
 max_repositories = 1
 max_pull_requests = 1
 target_minutes = 59
@@ -127,9 +127,8 @@ path_gate_enforced = false
 [bootstrap]
 milestone = "M0"
 golden_source = "hand-built"
-live_loop_verified = false
+live_loop_verified = true
 deferred = [
-  "PAT permission verification and paid end-to-end test",
   "CLI schema and module manifest types",
   "doctor and enforced path policy",
   "render and sync",
