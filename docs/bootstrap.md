@@ -13,13 +13,14 @@ The extra-approval rule for unattributed Copilot changes is explicitly off:
 GitHub enables it by default, which can require an approval even in solo mode.
 
 Intake accepts admin-triggered issue opens during bootstrap. Its only writes
-are staged label and comment outputs. It cannot apply `ready-for-agent`.
+are label and comment outputs. It cannot apply `ready-for-agent`.
 Build-cloud checks both the original actor and the rerun actor against the
 repository owner. Only the `ready-for-agent` label can trigger assignment.
 
-Both agent workflows are disabled in GitHub, and both enablement variables
-are `false`. Safe outputs are also staged. These are separate controls:
-staging prevents safe-output writes, but does not prevent paid inference.
+The owner approved leaving both agent workflows enabled with live safe outputs
+and both enablement variables set to `true`. Intake handles admin-opened issues.
+Build-cloud still requires the owner to add `ready-for-agent`.
+Enabling a workflow without its variable gates leaves its jobs skipped.
 `max-ai-credits: 5000` caps each main agent run. The pinned firewall rejects the
 negative no-cap value before inference, so this limit must be positive.
 `max-daily-ai-credits: -1` keeps the daily cap off.
@@ -51,6 +52,8 @@ This applies labels and the main ruleset, restricts the default Actions token
 to read access, disables auto-merge and disables both agent workflows.
 It creates a missing ruleset or updates the existing one by name. Re-running
 it intentionally turns the agent workflows and enablement variables off again.
+Use the continuous-operation commands below to restore the approved operating
+state afterward.
 
 `.github/labels.yml` is JSON-compatible YAML so the temporary Python tool needs
 no YAML dependency. The Rust doctor replaces this tool in M2.
@@ -79,29 +82,59 @@ access limited to `acme`, and both permission sets:
 - Account permissions: Copilot Requests read.
 
 Its owner must have Copilot access, and the repository must allow cloud-agent
-assignment. Secret presence is confirmed; permissions and authentication have
-not been tested. Never add token values to the config or to version control.
+assignment. Inference and the staged assignment preview passed. Live assignment
+permissions remain unverified. Never add token values to the config or to
+version control.
 
-The owner must separately approve any paid test. To dry-run:
+The owner approved continuous paid operation of Intake and Build-cloud.
+This does not authorize auto-merge or enable any deferred module.
 
-1. Verify credentials and choose a small, non-sensitive issue.
-2. Enable the relevant workflow in GitHub, set
-   `ACME_AGENT_WORKFLOWS_ENABLED=true`, and keep `safe-outputs.staged: true`.
-3. Open an issue as the owner and inspect intake's staged output.
-4. For assignment preview, also set `ACME_CLOUD_ASSIGNMENT_ENABLED=true` and
-   have the owner add `ready-for-agent` to a fully specified issue.
-5. Restore both variables to `false` and disable both workflows.
+### Continuous operation
 
-A staged assignment does not create an agent PR. After the dry run, a live
-end-to-end test needs another explicit owner approval, a reviewed PR that
-removes staging for the required outputs, and the corresponding config update.
-Verify a draft agent PR, green required CI, and a human merge. Until then,
-`bootstrap.live_loop_verified` remains `false`.
+Authenticate `gh` as the repository owner and enable the approved stages:
+
+```sh
+gh workflow enable intake.lock.yml --repo tylerbutler/acme
+gh workflow enable build-cloud.lock.yml --repo tylerbutler/acme
+gh variable set ACME_AGENT_WORKFLOWS_ENABLED --repo tylerbutler/acme --body true
+gh variable set ACME_CLOUD_ASSIGNMENT_ENABLED --repo tylerbutler/acme --body true
+```
+
+Leave these settings on between normal runs. Intake can apply its allowed
+labels and one comment, but never `ready-for-agent`. The owner must still add
+that label to approve each specified build. All PRs need human review and merge.
+Enabling workflows does not replay old issue events.
+
+### Verify the live loop
+
+1. Merge the reviewed live-workflow changes before testing live writes.
+2. Choose a small issue with a goal, acceptance scenarios, non-goals and an
+   approved spec link.
+3. Have the owner remove and reapply `ready-for-agent` on that issue to create
+   a new label event.
+4. Verify the actual Copilot assignment, one draft PR, green required CI, and a
+   human review and merge. Leave the approved workflows and variables enabled.
+
+The staged previews did not verify live assignment permissions. Keep
+`bootstrap.live_loop_verified=false` until the live loop passes.
+
+### Stop new runs or restore preview mode
+
+Set both enablement variables to `false` to stop future activation, and disable
+the workflows if needed. This does not cancel a running workflow or a separate
+builder that was already assigned.
+
+Both workflows are live. A staged preview first needs a reviewed and merged
+change that sets `safe-outputs.staged: true` for the relevant workflow, updates
+its `staged` value in `factory/factory.toml` and recompiles the lock file.
+Do not enable a live workflow expecting a preview. Staged runs still use AI
+credits.
 
 ## Deferred safeguards and exceptions
 
 - No monthly or daily budget; each main agent run has a 5000-AI-credit cap.
-- No paid run or live-loop verification during this bootstrap.
+- Staged tests passed; live assignment and the full issue-to-PR loop remain
+  unverified.
 - No release pin: there is no released CLI. `target_version` is not an install pin.
 - No automated review. Copilot will run review with a different model from build.
 - No enforceable agent-author/path gate yet. CODEOWNERS and risk paths document

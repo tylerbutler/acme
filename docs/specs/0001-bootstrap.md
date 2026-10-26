@@ -10,9 +10,9 @@ renderer fixtures, not a claim that the CLI exists.
 
 | Stage | Input | Output | Gate |
 | --- | --- | --- | --- |
-| Intake | Owner-opened issue | Staged labels and clarification comment | Goal, acceptance scenarios, non-goals |
+| Intake | Admin-opened issue | Labels and clarification comment | Goal, acceptance scenarios, non-goals |
 | Spec | Triaged issue and brief | Human-written spec | Owner adds `ready-for-agent` |
-| Build-cloud | Approved issue and spec | Staged assignment; later one draft PR | Owner actor, ready label, explicit enablement |
+| Build-cloud | Approved issue and spec | Live assignment; one draft PR | Owner actor, ready label, explicit enablement |
 | CI | PR | `CI` status | fmt, Clippy, tests, config consistency |
 | Merge | Green PR | Main commit | Human merge, required CI, resolved threads |
 
@@ -26,19 +26,21 @@ Copilot cloud agent and must follow `AGENTS.md`.
 2. `just check` passes; the CI workflow reports a `CI` check.
 3. GitHub has the issue-state labels and the active main ruleset from the fixtures.
 4. The ruleset requires a PR and CI, uses zero approvals, and has no bypass.
-5. Both compiled agent workflows are staged and disabled. Their enablement
-   variables are false. No paid agent test is started.
+5. Both compiled agent workflows are live and enabled, and both enablement
+   variables are true under the owner's continuous-operation approval.
+   Intake cannot approve a build or merge.
 6. Only an owner-applied `ready-for-agent` event can reach the assignment job.
 7. Missing credentials and all bootstrap exceptions are documented.
 8. The draft config matches the installed modules. It marks later modules off.
 
-## M0 exit check, deferred by owner
+## M0 exit check, pending live verification
 
 An issue goes from opened, through human-approved spec and cloud assignment,
 to a draft agent PR, green checks and a gated human merge.
 
-This check needs credentials and approval for a paid run. Repository setup
-alone does not satisfy it.
+The owner approved continuous paid operation, but this check still needs a
+successful live assignment and human merge. Repository setup alone does not
+satisfy it.
 
 ## Non-goals
 

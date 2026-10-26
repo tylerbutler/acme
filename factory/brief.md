@@ -18,9 +18,10 @@ changes and merges. The schema, modules and renderer always need human merge.
 Secrets and private holdout scenarios must never be changed or exposed by agents.
 
 Use a 5000-AI-credit cap per main agent run. Do not configure monthly or daily
-budgets at this stage. Keep agent workflows
-disabled and staged, leave assignment off while its PAT is absent, and do not
-start a paid agent run during bootstrap.
+budgets at this stage. The owner approved leaving Intake and Build-cloud enabled
+with live safe outputs and both variable gates on. Qualifying events can use
+paid inference. Only an owner-applied ready label can approve a build; human
+merge is still required.
 
 Do not implement the CLI or a second template repository in M0. Defer holdout,
 build-local, automated review, release and ops. Build schema, doctor, then the
