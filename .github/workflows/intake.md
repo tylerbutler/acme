@@ -8,7 +8,10 @@ if: vars.ACME_AGENT_WORKFLOWS_ENABLED == 'true'
 permissions:
   contents: read
   issues: read
-engine: copilot
+engine:
+  id: copilot
+  env:
+    COPILOT_GITHUB_TOKEN: ${{ secrets.GH_PAT }}
 max-ai-credits: -1
 max-daily-ai-credits: -1
 timeout-minutes: 5

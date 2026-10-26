@@ -13,7 +13,10 @@ if: >-
 permissions:
   contents: read
   issues: read
-engine: copilot
+engine:
+  id: copilot
+  env:
+    COPILOT_GITHUB_TOKEN: ${{ secrets.GH_PAT }}
 max-ai-credits: -1
 max-daily-ai-credits: -1
 timeout-minutes: 5
@@ -31,7 +34,7 @@ safe-outputs:
     required-labels: [ready-for-agent]
     target: triggering
     max: 1
-    github-token: ${{ secrets.GH_AW_AGENT_TOKEN }}
+    github-token: ${{ secrets.GH_PAT }}
     custom-instructions: >-
       Follow AGENTS.md and the issue's approved spec. Work only in this repository
       and open one draft PR. Do not merge or change workflow enablement, tokens,
