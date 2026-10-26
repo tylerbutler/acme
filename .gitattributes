@@ -1,6 +1,7 @@
 .github/workflows/*.lock.yml linguist-generated=true
 
 .agents/skills/** linguist-vendored=true
+.claude/** linguist-vendored=true
 skills/** linguist-vendored=true
 .github/agents/** linguist-vendored=true
 .github/hooks/** linguist-vendored=true

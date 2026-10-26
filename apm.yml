@@ -6,10 +6,13 @@ author: Tyler Butler
 # Resolution order: --target flag > this field > auto-detect from filesystem.
 # Accepted values: agent-skills, antigravity, claude, codex, copilot, cursor, gemini, grok-bot, grok-build, hermes, kiro, opencode, vscode, windsurf
 targets:
-- claude
-- copilot
+  - claude
+  - copilot
 dependencies:
   apm: []
   mcp: []
 includes: auto
 scripts: {}
+devDependencies:
+  apm:
+    - obra/superpowers
