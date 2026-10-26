@@ -128,9 +128,9 @@ policy is implemented and activated, all current per-issue gates remain.
 
 | Slice | Deliverable | Prerequisite |
 | --- | --- | --- |
-| A | Typed approval/config contract, snapshots and pure eligibility planner | M1 schema and manifest slices merged |
-| B | Shared claims, reconciliation and exact-target assignment hand-off | A merged |
-| C | Gated coordinator workflow, manual-route integration, reporting and rollout guide | B merged |
+| [A: tylerbutler/acme#43](https://github.com/tylerbutler/acme/issues/43) | Typed approval/config contract, snapshots and pure eligibility planner | M1 schema and manifest slices merged |
+| [B: tylerbutler/acme#42](https://github.com/tylerbutler/acme/issues/42) | Shared claims, reconciliation and exact-target assignment hand-off | A merged |
+| [C: tylerbutler/acme#41](https://github.com/tylerbutler/acme/issues/41) | Gated coordinator workflow, manual-route integration, reporting and rollout guide | B merged |
 
 These slices themselves use the existing owner-ready gate while bootstrapping;
 this unimplemented coordinator cannot approve or start its own installation.
