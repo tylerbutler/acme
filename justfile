@@ -34,7 +34,13 @@ generate-configs:
 check-configs:
     python3 scripts/check-configs-sync.py
 
-check: fmt-check lint check-configs test
+generate-schema:
+    cargo run --locked --bin generate-schema
+
+check-schema:
+    cargo run --quiet --locked --bin generate-schema -- --check
+
+check: fmt-check lint check-configs check-schema test
 
 ci: check
 
