@@ -50,6 +50,7 @@ pub enum IssueState {
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub struct ExistingWork {
+    pub active_claims: u32,
     pub active_assignments: u32,
     pub open_unmerged_implementation_prs: u32,
 }
@@ -416,7 +417,9 @@ fn declaration_reason(
     }
     match observation.existing_work {
         Evidence::Known(work)
-            if work.active_assignments == 0 && work.open_unmerged_implementation_prs == 0 => {}
+            if work.active_claims == 0
+                && work.active_assignments == 0
+                && work.open_unmerged_implementation_prs == 0 => {}
         Evidence::Known(_) => return Some(ReasonCode::ExistingWorkConflict),
         Evidence::Unknown => return Some(ReasonCode::ExistingWorkUnknown),
         Evidence::Error => return Some(ReasonCode::ExistingWorkError),
@@ -429,25 +432,24 @@ fn declaration_reason(
         if rows.len() != 1 || duplicate_issues.contains(&prerequisite.issue) {
             return Some(ReasonCode::AmbiguousPrerequisite);
         }
+        if rows[0].kind != TaskKind::Implementation {
+            return Some(ReasonCode::UnsupportedTaskKind);
+        }
         if cycles.contains(&prerequisite.issue) {
             return Some(ReasonCode::DependencyCycle);
         }
-        let Some(prerequisite_observation) =
-            observations
-                .get(&prerequisite.issue)
-                .and_then(|rows| match rows.as_slice() {
-                    [observation] => Some(*observation),
-                    _ => None,
-                })
-        else {
-            return Some(ReasonCode::MissingObservation);
-        };
+        let prerequisite_observation =
+            match observations.get(&prerequisite.issue).map(Vec::as_slice) {
+                None | Some([]) => return Some(ReasonCode::MissingObservation),
+                Some([observation]) => *observation,
+                Some(_) => return Some(ReasonCode::AmbiguousObservation),
+            };
         match &prerequisite_observation.completion {
             Evidence::Unknown => return Some(ReasonCode::PrerequisiteEvidenceUnknown),
             Evidence::Error => return Some(ReasonCode::PrerequisiteEvidenceError),
             Evidence::Known(None) => return Some(ReasonCode::PrerequisiteNotMerged),
             Evidence::Known(Some(completion)) => {
-                if !valid_completion(completion, input) {
+                if completion.issue != prerequisite.issue || !valid_completion(completion, input) {
                     return Some(ReasonCode::PrerequisiteNotMerged);
                 }
                 if !contains_identity(input.authorized_approvers, &completion.merged_by) {
@@ -459,7 +461,10 @@ fn declaration_reason(
                     };
                     if acceptance.issue != prerequisite.issue
                         || acceptance.merge_commit != completion.merge_commit
-                        || acceptance.accepted_by != input.owner_login
+                        || !acceptance
+                            .accepted_by
+                            .eq_ignore_ascii_case(input.owner_login)
+                        || input.owner_login.trim().is_empty()
                         || acceptance.receipt_id.trim().is_empty()
                     {
                         return Some(ReasonCode::InvalidOwnerAcceptance);
@@ -497,9 +502,10 @@ fn valid_revision(value: &str) -> bool {
 }
 
 fn contains_identity(identities: &[String], login: &str) -> bool {
-    identities
-        .iter()
-        .any(|identity| identity.eq_ignore_ascii_case(login))
+    !login.trim().is_empty()
+        && identities
+            .iter()
+            .any(|identity| !identity.trim().is_empty() && identity.eq_ignore_ascii_case(login))
 }
 
 fn observations_by_issue(observations: &[TaskObservation]) -> HashMap<u64, Vec<&TaskObservation>> {

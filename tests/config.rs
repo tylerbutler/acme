@@ -20,6 +20,20 @@ fn loads_factory_fixture_and_disabled_module_stubs() {
 }
 
 #[test]
+fn loads_explicit_coordinator_limits_without_changing_the_fixture_default() {
+    let configured = FACTORY.replace(
+        "[bootstrap]",
+        "[coordinator]\nautomatic_dispatch = true\nmax_active_tasks = 2\nmax_assignments_per_reconciliation = 1\nmax_attempts = 3\n\n[bootstrap]",
+    );
+    let config = FactoryConfig::from_toml(&configured).expect("coordinator config should load");
+
+    assert!(config.coordinator.automatic_dispatch);
+    assert_eq!(config.coordinator.max_active_tasks, 2);
+    assert_eq!(config.coordinator.max_assignments_per_reconciliation, 1);
+    assert_eq!(config.coordinator.max_attempts, 3);
+}
+
+#[test]
 fn reports_malformed_toml() {
     let error =
         FactoryConfig::from_toml("schema_version = [").expect_err("malformed TOML should fail");

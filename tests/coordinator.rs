@@ -192,11 +192,15 @@ fn stale_scope_unauthorized_approval_and_trackers_fail_closed() {
         kind: TaskKind::PlanningTracker,
         ..declaration(45, Vec::new())
     };
-    let mut state = TestPlan::new(vec![declaration(43, Vec::new()), tracker]);
+    let mut state = TestPlan::new(vec![
+        declaration(43, Vec::new()),
+        tracker,
+        declaration(46, Vec::new()),
+    ]);
     state.observations[0].current_issue_body = Evidence::Known("Changed scope".to_owned());
-    state.observations[1].approval = Evidence::Known(Some(ApprovalEvidence {
+    state.observations[2].approval = Evidence::Known(Some(ApprovalEvidence {
         merged_by: "untrusted-user".to_owned(),
-        ..match state.observations[1].approval.clone() {
+        ..match state.observations[2].approval.clone() {
             Evidence::Known(Some(approval)) => approval,
             _ => unreachable!(),
         }
@@ -211,6 +215,10 @@ fn stale_scope_unauthorized_approval_and_trackers_fail_closed() {
     assert_eq!(
         eligibility(&decisions, 45),
         Eligibility::Blocked(acme::ReasonCode::UnsupportedTaskKind)
+    );
+    assert_eq!(
+        eligibility(&decisions, 46),
+        Eligibility::Blocked(acme::ReasonCode::UnauthorizedApprover)
     );
 }
 
@@ -231,6 +239,15 @@ fn unknown_errors_kill_switches_and_weak_dependencies_block() {
     );
 
     state.observations[0].native_prerequisites = Evidence::Known(Vec::new());
+    state.observations[0].existing_work = Evidence::Known(ExistingWork {
+        active_claims: 1,
+        ..ExistingWork::default()
+    });
+    assert_eq!(
+        eligibility(&state.plan(), 43),
+        Eligibility::Blocked(acme::ReasonCode::ExistingWorkConflict)
+    );
+    state.observations[0].existing_work = Evidence::Known(ExistingWork::default());
     state.switches.assignment = Evidence::Error;
     assert_eq!(
         eligibility(&state.plan(), 43),
