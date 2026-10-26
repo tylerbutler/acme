@@ -4,8 +4,38 @@ use std::collections::BTreeMap;
 use std::fs;
 use std::path::Path;
 
+mod repair;
+pub use repair::{checkout_repository, run_doctor_fix};
+
 pub trait GitHubTransport {
     fn get(&self, endpoint: &str) -> Result<Vec<Value>, GitHubError>;
+
+    fn write(
+        &self,
+        _method: GitHubMethod,
+        _endpoint: &str,
+        _body: &Value,
+    ) -> Result<(), GitHubError> {
+        Err(GitHubError::PermissionDenied)
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum GitHubMethod {
+    Post,
+    Patch,
+    Put,
+}
+
+impl GitHubMethod {
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Post => "POST",
+            Self::Patch => "PATCH",
+            Self::Put => "PUT",
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

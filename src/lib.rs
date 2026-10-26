@@ -18,5 +18,8 @@ pub use dispatch::{
     ContentSnapshot, DispatchContractError, DispatchDeclaration, DispatchReason, Prerequisite,
     SpecBinding, TaskKind, content_sha256,
 };
-pub use doctor::{Check, DoctorReport, GitHubError, GitHubTransport, run_doctor};
+pub use doctor::{
+    Check, DoctorReport, GitHubError, GitHubMethod, GitHubTransport, checkout_repository,
+    run_doctor, run_doctor_fix,
+};
 pub use manifest::{ManifestError, ModuleManifest};
