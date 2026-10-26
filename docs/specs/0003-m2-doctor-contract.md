@@ -23,10 +23,11 @@ Add module manifests and source assets for this exact output inventory:
 
 Use the reviewed post-M1 files as the baseline, including any M1 schema check.
 Declare exact output paths alongside the module implementation; do not infer
-ownership from directory globs. Keep the M1 manifest contract. CI maps to
-`modules.ci`; the enabled Intake stage needs labels and forms; the enabled
-human merge stage needs the ruleset. These support modules do not require new
-enablement flags in the factory fixture.
+ownership from directory globs. Bundle the catalog and assets with the binary;
+do not require the acme source checkout at runtime. Keep the M1 manifest
+contract. CI maps to `modules.ci`; the enabled Intake stage needs labels and
+forms; the enabled human merge stage needs the ruleset. These support modules
+do not require new enablement flags in the factory fixture.
 
 Preserve action SHAs, required checks, forms and label definitions. Modules
 may need files supplied by the project, such as CI scripts; those files are
@@ -96,9 +97,9 @@ perform live drift or repair tests in an implementation agent run or CI.
 
 | Slice | Deliverable | Prerequisite |
 | --- | --- | --- |
-| A | Four-module catalog, exact owned paths and baseline assets | M1 schema and manifest slices merged |
-| B | Read-only doctor, reports, CLI wiring and fake-API tests | A merged |
-| C | Explicit repair plans, bounded `--fix` and re-verification | B merged |
+| [A: tylerbutler/acme#25](https://github.com/tylerbutler/acme/issues/25) | Four-module catalog, exact owned paths and baseline assets | M1 schema and manifest slices merged |
+| [B: tylerbutler/acme#24](https://github.com/tylerbutler/acme/issues/24) | Read-only doctor, reports, CLI wiring and fake-API tests | A merged |
+| [C: tylerbutler/acme#22](https://github.com/tylerbutler/acme/issues/22) | Explicit repair plans, bounded `--fix` and re-verification | B merged |
 
 ## Non-goals and approval
 
