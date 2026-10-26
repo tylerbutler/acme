@@ -23,9 +23,10 @@ Solo mode needs zero required approvals because an owner cannot approve a
 requested agent PR. Require CI and resolved threads instead.
 
 Keep agent jobs read-only and route writes through safe outputs. Both workflows
-started with staged outputs. After its staged preview passed, build-cloud uses
-live assignment; intake stays staged. Workflow and variable gates remain off
-until the owner approves credentials and paid testing.
+started with staged outputs. After the staged tests passed, the owner approved
+leaving Intake and Build-cloud enabled with live safe outputs. The repository
+variables remain kill switches. Only the owner can approve a build with the
+ready label; all merges remain human-controlled.
 The owner initially declined budget caps, then approved 5000 AI credits per
 main agent run after the pinned firewall rejected the negative no-cap value.
 Monthly and daily budgets remain off. Staged runs still use AI credits.

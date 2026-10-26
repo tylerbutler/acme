@@ -26,23 +26,23 @@ and tests.
 | `factory/factory.toml` | Human-approved draft; no CLI reads it yet |
 | `AGENTS.md` | Agent instructions and risk boundaries |
 | `.github/workflows/ci.yml` | Required `CI` check: fmt, Clippy and tests |
-| `.github/workflows/intake.md` | Staged issue intake |
+| `.github/workflows/intake.md` | Admin-opened issue intake |
 | `.github/workflows/build-cloud.md` | Owner-authorized Copilot assignment |
 | `.github/labels.yml` | Issue state labels |
 | `.github/rulesets/main.json` | Main ruleset: PR, zero approvals, required CI |
 | `docs/specs/0001-bootstrap.md` | M0 scope, gates and acceptance criteria |
 | `docs/adr/0001-factory-boundaries.md` | Architecture and bootstrap exceptions |
 
-Both agent workflows are disabled in GitHub and gated by repository variables.
-Intake safe outputs remain staged. **Build-cloud assignment is live when its
-workflow and both variable gates are enabled and the owner adds
-`ready-for-agent`.** Staged runs also use AI credits. Each main agent run has a
-5000-AI-credit cap; monthly and daily budgets are off.
+The owner approved leaving Intake and Build-cloud enabled with live safe
+outputs and both variable gates set to `true`. Intake triages admin-opened
+issues. Build-cloud still requires the owner to add `ready-for-agent` to a
+specified issue. **These events can use paid AI credits.** Each main agent run
+has a 5000-AI-credit cap; monthly and daily budgets are off.
 Both authentication paths use `GH_PAT`. Inference and staged assignment passed;
 live assignment permissions remain unverified. See
 [the bootstrap guide](docs/bootstrap.md) before enabling anything.
 
-M0's live issue-to-agent-PR acceptance check is deliberately not run. Holdout,
+M0's live issue-to-agent-PR acceptance check is not yet verified. Holdout,
 local builds, automated review, release and ops are deferred.
 
 ## Template basis

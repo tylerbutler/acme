@@ -21,7 +21,7 @@ tools:
   github:
     toolsets: [issues, labels]
 safe-outputs:
-  staged: true
+  staged: false
   add-labels:
     allowed: [needs-spec, bug, idea]
     max: 1
