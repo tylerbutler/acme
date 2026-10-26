@@ -33,14 +33,17 @@ Copilot cloud agent and must follow `AGENTS.md`.
 7. Missing credentials and all bootstrap exceptions are documented.
 8. The draft config matches the installed modules. It marks later modules off.
 
-## M0 exit check, pending live verification
+## M0 exit check, verified
 
 An issue goes from opened, through human-approved spec and cloud assignment,
 to a draft agent PR, green checks and a gated human merge.
 
-The owner approved continuous paid operation, but this check still needs a
-successful live assignment and human merge. Repository setup alone does not
-satisfy it.
+Verified on 2026-10-26: [tylerbutler/acme#11](https://github.com/tylerbutler/acme/issues/11)
+produced the Copilot draft [tylerbutler/acme#13](https://github.com/tylerbutler/acme/pull/13),
+which passed required CI and was merged by the owner. The
+[live-loop record](../bootstrap.md#verified-m0-loop) links the assignment,
+builder, CI and human-merge evidence. Live Intake writes were not part of this
+build test; Intake has separate staged coverage.
 
 ## Non-goals
 

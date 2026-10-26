@@ -82,9 +82,8 @@ access limited to `acme`, and both permission sets:
 - Account permissions: Copilot Requests read.
 
 Its owner must have Copilot access, and the repository must allow cloud-agent
-assignment. Inference and the staged assignment preview passed. Live assignment
-permissions remain unverified. Never add token values to the config or to
-version control.
+assignment. Inference and live assignment passed in the M0 test recorded below.
+Never add token values to the config or to version control.
 
 The owner approved continuous paid operation of Intake and Build-cloud.
 This does not authorize auto-merge or enable any deferred module.
@@ -115,8 +114,25 @@ Enabling workflows does not replay old issue events.
 4. Verify the actual Copilot assignment, one draft PR, green required CI, and a
    human review and merge. Leave the approved workflows and variables enabled.
 
-The staged previews did not verify live assignment permissions. Keep
-`bootstrap.live_loop_verified=false` until the live loop passes.
+A staged preview alone does not verify live assignment permissions. Set
+`bootstrap.live_loop_verified=true` only after the live loop passes.
+
+### Verified M0 loop
+
+The owner-approved live build loop passed on 2026-10-26:
+
+| Gate | Evidence |
+| --- | --- |
+| Approved issue | [tylerbutler/acme#11](https://github.com/tylerbutler/acme/issues/11), now closed |
+| Live assignment | [Build cloud run](https://github.com/tylerbutler/acme/actions/runs/40282626400), all six jobs passed |
+| Copilot builder | [Cloud agent run](https://github.com/tylerbutler/acme/actions/runs/40282969821), passed |
+| Draft PR | [tylerbutler/acme#13](https://github.com/tylerbutler/acme/pull/13), only `CONTRIBUTING.md` changed |
+| Required CI | [CI run](https://github.com/tylerbutler/acme/actions/runs/40283093471), passed on the PR head |
+| Human merge | Owner merged [05ac0f0](https://github.com/tylerbutler/acme/commit/05ac0f08291e3f00f717c8e825e2eb7904e90df3) |
+
+This verifies the live assignment, builder, CI and human-merge path.
+`modules.build_cloud.token_verified` and `bootstrap.live_loop_verified` are
+`true`. Both workflows and their enablement variables remain on.
 
 ### Stop new runs or restore preview mode
 
@@ -133,8 +149,9 @@ credits.
 ## Deferred safeguards and exceptions
 
 - No monthly or daily budget; each main agent run has a 5000-AI-credit cap.
-- Staged tests passed; live assignment and the full issue-to-PR loop remain
-  unverified.
+- Live Intake label/comment writes were not exercised in this build loop.
+  [Staged Intake](https://github.com/tylerbutler/acme/actions/runs/40277232574)
+  passed separately.
 - No release pin: there is no released CLI. `target_version` is not an install pin.
 - No automated review. Copilot will run review with a different model from build.
 - No enforceable agent-author/path gate yet. CODEOWNERS and risk paths document
