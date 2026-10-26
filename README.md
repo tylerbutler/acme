@@ -4,27 +4,32 @@ A deterministic software-factory CLI, written in Rust. The binary will read
 `factory/factory.toml` and render the workflows and guardrails a project needs.
 It will not call an LLM. An agent skill will conduct the init interview.
 
-**Status: M0 factory loop verified.** The factory is hand-built. `init`,
-`doctor`, `render` and `sync` do not exist yet. The binary exits with an explicit
-error.
+**Status: M0 factory loop verified.** The factory is hand-built. `doctor` runs
+read-only checks against the local module assets and the GitHub repository named
+in the config. It requires an authenticated `gh` CLI. `init`, `render` and `sync`
+are not implemented and fail explicitly.
 
 ## Development
 
 ```sh
 just build
 just check
+cargo run -- doctor
+cargo run -- doctor --config path/to/factory.toml
 ```
 
 Rust is pinned in `rust-toolchain.toml`. Python 3 is used for the bootstrap
 and commit-config scripts. `just check` runs formatting, Clippy, config checks,
-and tests.
+and tests. Doctor reports drift and repair guidance but does not change local
+files or GitHub settings. It does not verify token scopes, enforce path-author
+policy, or enforce model separation. `doctor --fix` is not implemented.
 
 ## The first factory
 
 | File | Purpose |
 | --- | --- |
 | `factory/brief.md` | Project goals and constraints |
-| `factory/factory.toml` | Human-approved draft; no CLI reads it yet |
+| `factory/factory.toml` | Human-approved config read and validated by doctor |
 | `AGENTS.md` | Agent instructions and risk boundaries |
 | `.github/workflows/ci.yml` | Required `CI` check: fmt, Clippy and tests |
 | `.github/workflows/intake.md` | Admin-opened issue intake |
