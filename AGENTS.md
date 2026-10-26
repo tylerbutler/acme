@@ -13,6 +13,8 @@ M0 is a hand-built factory, not a working CLI.
 `init`, `doctor`, `render` and `sync` are not implemented.
 The binary must not report success for those commands.
 Read `factory/brief.md` and `docs/specs/0001-bootstrap.md` first.
+Read `docs/specs/0002-m1-config-contract.md` before M1 config, schema or manifest
+work. Implement only after the spec is merged and the owner approves the issue.
 Architecture decisions are in `docs/adr/`.
 
 ## Repository map
