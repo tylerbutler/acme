@@ -34,12 +34,20 @@ def apply_ruleset(repo, ruleset):
         gh("api", "--method", "POST", endpoint, "--input", "-", input_data=ruleset)
 
 
+def disable_workflow(repo, workflow):
+    state = json.loads(gh("api", f"repos/{repo}/actions/workflows/{workflow}"))["state"]
+    if state == "active":
+        gh("workflow", "disable", workflow, "--repo", repo)
+    elif not state.startswith("disabled_"):
+        raise ValueError(f"Unexpected state {state!r} for workflow {workflow!r}")
+
+
 def main():
     repo = gh("repo", "view", "--json", "nameWithOwner", "--jq", ".nameWithOwner").strip()
     for variable in ("ACME_AGENT_WORKFLOWS_ENABLED", "ACME_CLOUD_ASSIGNMENT_ENABLED"):
         gh("variable", "set", variable, "--repo", repo, "--body", "false")
     for workflow in ("intake.lock.yml", "build-cloud.lock.yml"):
-        gh("workflow", "disable", workflow, "--repo", repo)
+        disable_workflow(repo, workflow)
 
     gh("api", "--method", "PATCH", f"repos/{repo}", "--input", "-", input_data={
         "allow_auto_merge": False,
