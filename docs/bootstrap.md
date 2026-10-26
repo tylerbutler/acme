@@ -9,6 +9,8 @@ no renderer or doctor yet. Keep config and fixtures consistent by hand.
 The `main` ruleset requires a PR, the GitHub Actions `CI` check, an up-to-date
 branch and resolved review threads. It has zero required approvals and no
 bypass actors. Auto-merge is off. A human reviews and merges.
+The extra-approval rule for unattributed Copilot changes is explicitly off:
+GitHub enables it by default, which can require an approval even in solo mode.
 
 Intake accepts admin-triggered issue opens during bootstrap. Its only writes
 are staged label and comment outputs. It cannot apply `ready-for-agent`.
