@@ -1,0 +1,16 @@
+lockfile_version: '1'
+dependencies: []
+deployments:
+- kind: project-relative
+  target: copilot
+  value: .github/instructions/code-comments.instructions.md
+  runtime: null
+  scope: project
+  owners:
+  - .
+  active_owner: .
+  content_hash: sha256:bbfa17eb1679c8abe36cf902ec5ec457ef1bbe41892da343cc994505564d27ea
+local_deployed_files:
+- .github/instructions/code-comments.instructions.md
+local_deployed_file_hashes:
+  .github/instructions/code-comments.instructions.md: sha256:bbfa17eb1679c8abe36cf902ec5ec457ef1bbe41892da343cc994505564d27ea
