@@ -1,0 +1,33 @@
+name: Spec request
+description: Define a bounded task for a human-approved spec.
+title: "[spec] "
+labels: [needs-spec]
+body:
+  - type: textarea
+    id: goal
+    attributes:
+      label: Goal
+      description: Link the brief or issue and state the intended outcome.
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance scenarios
+      description: Specify inputs, outputs and pass criteria for every proposed stage.
+    validations:
+      required: true
+  - type: textarea
+    id: non-goals
+    attributes:
+      label: Non-goals
+      description: State the scope boundary and deferred work.
+    validations:
+      required: true
+  - type: textarea
+    id: risks
+    attributes:
+      label: Risks and human gates
+      description: Identify affected risk tiers and decisions that require the owner.
+    validations:
+      required: true
