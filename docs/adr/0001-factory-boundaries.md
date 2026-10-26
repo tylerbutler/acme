@@ -24,8 +24,9 @@ requested agent PR. Require CI and resolved threads instead.
 
 Keep agent jobs read-only and route writes through staged safe outputs.
 Keep workflows disabled until the owner approves credentials and paid testing.
-The owner explicitly declined monthly budgets and credit caps at bootstrap;
-this is a deviation from the proposed cost-cap default, not a free-run claim.
+The owner initially declined budget caps, then approved 5000 AI credits per
+main agent run after the pinned firewall rejected the negative no-cap value.
+Monthly and daily budgets remain off. Staged runs still use AI credits.
 
 Holdout scenarios will live in a separate private repository. No holdout repo
 or token is provisioned in M0. Release, ops and local orchestration are also off.

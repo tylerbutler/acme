@@ -79,7 +79,8 @@ Agent workflows are disabled and also gated by repository variables.
 Safe outputs are staged; the agent itself has read-only permissions.
 Intake cannot apply `ready-for-agent` or assign a builder.
 Do not remove staging or enable either workflow without owner approval.
-There are no monthly or per-run credit caps, by owner decision.
+Each workflow's main agent has a 5000-AI-credit limit, by owner decision.
+No monthly or daily budget is enforced.
 Staging does not make a run free.
 `GH_PAT` is configured for inference and assignment; its access is unverified.
 Do not read its value, expose it, or reuse local credentials.
