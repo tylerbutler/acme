@@ -1,0 +1,133 @@
+# M0 schema draft and future golden fixture. No acme binary reads this yet.
+schema_version = 0
+repository = "tylerbutler/acme"
+profile = "cli"
+languages = ["rust"]
+autonomy = "L3"
+solo = true
+
+[toolchain.acme]
+bootstrap = true
+target_version = "0.1.0"
+# No released build exists. Add a release-tag pin after the manual stage0 build.
+
+[toolchain.gh_aw]
+version = "v0.93.5"
+
+[budget]
+enforce_monthly = false
+enforce_ai_credits = false
+reason = "Owner requested no budgets or credit caps during bootstrap."
+
+[engines.intake]
+engine = "copilot"
+
+[engines.build_cloud]
+engine = "copilot"
+model = "auto"
+
+[engines.review]
+engine = "copilot"
+enabled = false
+model_policy = "different-from-builder"
+
+[modules.intake]
+enabled = true
+gate = "issue-form"
+staged = true
+workflow_enabled = false
+roles = ["admin"]
+needs = ["labels", "issue-forms"]
+provides = ["triaged-issue"]
+
+[modules.spec]
+enabled = true
+implementation = "human"
+gate = "owner-ready-for-agent"
+needs = ["triaged-issue"]
+provides = ["approved-spec"]
+
+[modules.build_cloud]
+enabled = true
+gate = "owner-ready-for-agent"
+staged = true
+workflow_enabled = false
+assignment_enabled = false
+token_secret = "GH_AW_AGENT_TOKEN"
+token_configured = false
+max_repositories = 1
+max_pull_requests = 1
+target_minutes = 59
+needs = ["approved-spec", "ci"]
+provides = ["draft-pr"]
+
+[modules.ci]
+enabled = true
+gate = "required-status-check"
+required_checks = ["CI"]
+commands = [
+  "cargo fmt --all -- --check",
+  "cargo clippy --locked --all-targets --all-features -- -D warnings",
+  "cargo test --locked --all-features",
+  "python3 scripts/check-configs-sync.py",
+  "python3 -m unittest discover -s tests -p 'test_*.py'",
+]
+provides = ["ci"]
+
+[modules.merge]
+enabled = true
+implementation = "human"
+gate = "required-ci-and-resolved-threads"
+required_approvals = 0
+auto_merge = false
+needs = ["ci"]
+provides = ["merged-pr"]
+
+[modules.review]
+enabled = false
+
+[modules.holdout]
+enabled = false
+
+[modules.build_local]
+enabled = false
+
+[modules.release]
+enabled = false
+
+[modules.ops]
+enabled = false
+
+[risk]
+default = "human-merge"
+auto_merge = []
+human_merge = [
+  "schema/**",
+  "modules/**",
+  "src/render/**",
+  "src/render.rs",
+  ".github/**",
+  "factory/**",
+  "scripts/**",
+]
+never_agent = [
+  "**/.env",
+  "**/.env.*",
+  "secrets/**",
+  "credentials/**",
+  "scenarios/private/**",
+]
+path_gate_enforced = false
+
+[bootstrap]
+milestone = "M0"
+golden_source = "hand-built"
+live_loop_verified = false
+deferred = [
+  "assignment PAT and paid end-to-end test",
+  "CLI schema and module manifest types",
+  "doctor and enforced path policy",
+  "render and sync",
+  "first release-tag pin",
+  "second template repository",
+]

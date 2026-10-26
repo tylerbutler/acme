@@ -1,0 +1,43 @@
+[package]
+name = "acme"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.85"
+authors = ["tylerbutler"]
+description = "Deterministic configuration for a software factory"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/tylerbutler/acme"
+keywords = ["automation", "cli", "github-actions"]
+categories = ["command-line-utilities"]
+publish = false
+
+[dependencies]
+
+[dev-dependencies]
+
+[profile.release]
+strip = true
+lto = true
+codegen-units = 1
+panic = "abort"
+
+[profile.dist]
+inherits = "release"
+lto = "thin"
+
+# Enables the `cargo build --profile profiling` command
+[profile.profiling]
+inherits = "release"
+debug = true
+
+[lints.rust]
+unsafe_code = "forbid"
+
+[lints.clippy]
+all = { level = "warn", priority = -1 }
+pedantic = { level = "warn", priority = -1 }
+nursery = { level = "warn", priority = -1 }
+# Allow some pedantic lints
+missing_errors_doc = "allow"
+missing_panics_doc = "allow"
+module_name_repetitions = "allow"
