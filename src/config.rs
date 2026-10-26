@@ -95,7 +95,7 @@ impl FactoryConfig {
     }
 }
 
-#[derive(Debug, Default, Deserialize, Eq, JsonSchema, PartialEq)]
+#[derive(Clone, Debug, Default, Deserialize, Eq, JsonSchema, PartialEq)]
 #[serde(deny_unknown_fields)]
 pub struct CoordinatorConfig {
     #[serde(default)]
