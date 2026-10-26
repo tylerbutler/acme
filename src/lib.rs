@@ -2,6 +2,7 @@ pub mod catalog;
 pub mod config;
 pub mod coordinator;
 pub mod dispatch;
+pub mod doctor;
 pub mod manifest;
 
 pub use catalog::{BuiltinModule, ConfigBinding, ModuleAsset, builtin_modules};
@@ -15,4 +16,5 @@ pub use dispatch::{
     ContentSnapshot, DispatchContractError, DispatchDeclaration, DispatchReason, Prerequisite,
     SpecBinding, TaskKind, content_sha256,
 };
+pub use doctor::{Check, DoctorReport, GitHubError, GitHubTransport, run_doctor};
 pub use manifest::{ManifestError, ModuleManifest};
