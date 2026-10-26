@@ -1,3 +1,4 @@
+pub mod assignment;
 pub mod catalog;
 pub mod config;
 pub mod coordinator;
