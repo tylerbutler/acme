@@ -149,7 +149,7 @@ fn reports_each_managed_setting_drift() {
     }
 }
 
-fn label_mutations() -> [(&'static str, Mutation); 2] {
+fn label_mutations() -> [(&'static str, Mutation); 4] {
     [
         (
             "github.label.needs_spec",
@@ -158,6 +158,17 @@ fn label_mutations() -> [(&'static str, Mutation); 2] {
         (
             "github.label.needs_spec",
             Mutation::Label("description", json!("changed")),
+        ),
+        (
+            "github.label.needs_spec",
+            Mutation::Label("name", json!("Needs-Spec")),
+        ),
+        (
+            "github.label.needs_spec",
+            Mutation::Label(
+                "description",
+                json!("needs an explicit spec and acceptance scenarios"),
+            ),
         ),
     ]
 }
@@ -663,20 +674,35 @@ impl GitHubTransport for RepairGitHub {
                     .insert(RULESET.to_owned(), vec![body.clone()]);
             }
             (GitHubMethod::Post, "repos/tylerbutler/acme/labels") => {
-                state.responses.get_mut(LABELS).expect("labels")[0]
+                let labels = state.responses.get_mut(LABELS).expect("labels")[0]
                     .as_array_mut()
-                    .expect("labels array")
-                    .push(body.clone());
+                    .expect("labels array");
+                if labels.iter().any(|label| {
+                    label["name"]
+                        .as_str()
+                        .expect("label name")
+                        .eq_ignore_ascii_case(body["name"].as_str().expect("new label name"))
+                }) {
+                    return Err(GitHubError::ApiFailure);
+                }
+                labels.push(body.clone());
             }
-            (GitHubMethod::Patch, "repos/tylerbutler/acme/labels/needs-spec") => {
+            (GitHubMethod::Patch, endpoint)
+                if endpoint.eq_ignore_ascii_case("repos/tylerbutler/acme/labels/needs-spec") =>
+            {
                 let label = state.responses.get_mut(LABELS).expect("labels")[0]
                     .as_array_mut()
                     .expect("labels array")
                     .iter_mut()
-                    .find(|label| label["name"] == "needs-spec")
+                    .find(|label| {
+                        label["name"]
+                            .as_str()
+                            .expect("label name")
+                            .eq_ignore_ascii_case("needs-spec")
+                    })
                     .expect("managed label");
                 for (field, value) in body.as_object().expect("label patch") {
-                    label[field] = value.clone();
+                    label[if field == "new_name" { "name" } else { field }] = value.clone();
                 }
             }
             _ => panic!("unbounded write: {method:?} {endpoint} {body}"),
@@ -704,6 +730,18 @@ fn fix_repairs_each_supported_setting_and_second_fix_is_a_no_op() {
         assert!(report.is_success(), "{report}");
         assert_eq!(github.writes.borrow().len(), 1, "second fix wrote state");
     }
+}
+
+#[test]
+fn label_hex_color_case_is_not_drift_and_needs_no_write() {
+    let github = RepairGitHub::matching();
+    Mutation::Label("color", json!("d4c5f9")).apply(&mut github.state.borrow_mut());
+    let config = FactoryConfig::load(Path::new(ROOT).join("factory/factory.toml")).expect("config");
+    let report = run_doctor(&config, Path::new(ROOT), &github);
+    assert!(report.is_success(), "{report}");
+    let report = github.fix(Path::new(ROOT));
+    assert!(report.is_success(), "{report}");
+    assert!(github.writes.borrow().is_empty());
 }
 
 #[test]

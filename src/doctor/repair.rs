@@ -187,7 +187,11 @@ fn plan_labels(
             .ok_or("Invalid bundled label name.")?;
         let matches: Vec<_> = observed
             .iter()
-            .filter(|candidate| candidate["name"].as_str() == Some(name))
+            .filter(|candidate| {
+                candidate["name"]
+                    .as_str()
+                    .is_some_and(|candidate| candidate.eq_ignore_ascii_case(name))
+            })
             .collect();
         let (method, endpoint, body) = match matches.as_slice() {
             [] => (
@@ -196,13 +200,22 @@ fn plan_labels(
                 label.clone(),
             ),
             [actual] => {
-                let body = changed_fields(label, actual, &["color", "description"]);
+                let mut body = changed_fields(label, actual, &["color"]);
+                if label["description"] != actual["description"] {
+                    body["description"] = label["description"].clone();
+                }
+                if label["name"] != actual["name"] {
+                    body["new_name"] = label["name"].clone();
+                }
                 if body.as_object().is_some_and(serde_json::Map::is_empty) {
                     continue;
                 }
                 (
                     GitHubMethod::Patch,
-                    format!("{prefix}/labels/{}", encode_segment(name)),
+                    format!(
+                        "{prefix}/labels/{}",
+                        encode_segment(actual["name"].as_str().ok_or("Invalid label name.")?)
+                    ),
                     body,
                 )
             }

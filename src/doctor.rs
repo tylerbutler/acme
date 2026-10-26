@@ -423,7 +423,11 @@ fn check_labels(github: &impl GitHubTransport, prefix: &str, report: &mut Doctor
         let name = label["name"].as_str().unwrap_or("unknown");
         let matches: Vec<_> = observed
             .iter()
-            .filter(|candidate| candidate["name"].as_str() == Some(name))
+            .filter(|candidate| {
+                candidate["name"]
+                    .as_str()
+                    .is_some_and(|candidate| candidate.eq_ignore_ascii_case(name))
+            })
             .collect();
         let expected_fields = json!({
             "name": name,
@@ -438,9 +442,11 @@ fn check_labels(github: &impl GitHubTransport, prefix: &str, report: &mut Doctor
             })
         });
         let valid = matches.len() == 1
-            && actual_fields
-                .as_ref()
-                .is_some_and(|actual| semantic_equal(&expected_fields, actual));
+            && actual_fields.as_ref().is_some_and(|actual| {
+                actual["name"] == expected_fields["name"]
+                    && actual["description"] == expected_fields["description"]
+                    && semantic_equal(&expected_fields["color"], &actual["color"])
+            });
         push(
             report,
             &format!("github.label.{}", stable_path(name)),
