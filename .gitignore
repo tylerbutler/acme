@@ -25,3 +25,6 @@ Thumbs.db
 
 # Python tools
 __pycache__/
+
+# APM dependencies
+apm_modules/

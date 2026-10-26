@@ -26,7 +26,8 @@ token_secret = "GH_PAT"
 
 [engines.build_cloud]
 engine = "copilot"
-model = "auto"
+# This selects the issue-assigned builder, not the workflow controller.
+model = "gpt-6.1-sol"
 token_secret = "GH_PAT"
 
 [engines.review]

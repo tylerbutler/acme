@@ -4,27 +4,53 @@ A deterministic software-factory CLI, written in Rust. The binary will read
 `factory/factory.toml` and render the workflows and guardrails a project needs.
 It will not call an LLM. An agent skill will conduct the init interview.
 
-**Status: M0 factory loop verified.** The factory is hand-built. `init`,
-`doctor`, `render` and `sync` do not exist yet. The binary exits with an explicit
-error.
+**Status: M0 factory loop verified.** The factory is hand-built. `doctor` runs
+read-only checks against the local module assets and the GitHub repository named
+in the config. It requires an authenticated `gh` CLI. `init`, `render` and `sync`
+are not implemented and fail explicitly.
 
 ## Development
 
 ```sh
 just build
 just check
+cargo run -- doctor
+cargo run -- doctor --config path/to/factory.toml
 ```
 
 Rust is pinned in `rust-toolchain.toml`. Python 3 is used for the bootstrap
 and commit-config scripts. `just check` runs formatting, Clippy, config checks,
-and tests.
+and tests. Doctor reports drift and repair guidance but does not change local
+files or GitHub settings. It does not verify token scopes, enforce path-author
+policy, or enforce model separation. `doctor --fix` is not implemented.
+
+### Agent comment style
+
+The APM source rule is
+[`.apm/instructions/code-comments.instructions.md`](.apm/instructions/code-comments.instructions.md).
+It applies ASD-STE100 guidance to new and changed code comments, including
+documentation comments and docstrings. It does not require changes to existing
+comments or claim verified compliance with the complete standard.
+
+After you edit the source rule, use [APM](https://github.com/microsoft/apm) to
+validate it and generate the Copilot rule:
+
+```sh
+apm compile --target copilot --local-only --validate
+apm install --target copilot --only apm
+```
+
+Commit the source rule, the generated file in `.github/instructions/`, and
+`apm.lock.yaml`. The project manifest is `apm.yml`. Copilot reads the committed
+rule without an APM install step. Keep the hand-written `AGENTS.md`; it remains
+the shared instruction source.
 
 ## The first factory
 
 | File | Purpose |
 | --- | --- |
 | `factory/brief.md` | Project goals and constraints |
-| `factory/factory.toml` | Human-approved draft; no CLI reads it yet |
+| `factory/factory.toml` | Human-approved config read and validated by doctor |
 | `AGENTS.md` | Agent instructions and risk boundaries |
 | `.github/workflows/ci.yml` | Required `CI` check: fmt, Clippy and tests |
 | `.github/workflows/intake.md` | Admin-opened issue intake |

@@ -9,9 +9,10 @@ The CLI renders only approved config.
 
 ## Current scope
 
-M0 is a hand-built factory, not a working CLI.
-`init`, `doctor`, `render` and `sync` are not implemented.
-The binary must not report success for those commands.
+The factory is hand-built. `doctor` is implemented as a read-only check of
+supported local assets and GitHub settings. It reads and validates the M1
+config before checks. `init`, `render` and `sync` are not implemented, and the
+binary must not report success for them. `doctor --fix` is not implemented.
 Read `factory/brief.md` and `docs/specs/0001-bootstrap.md` first.
 Read `docs/specs/0002-m1-config-contract.md` before M1 config, schema or manifest
 work. Implement only after the spec is merged and the owner approves the issue.
@@ -19,7 +20,7 @@ Architecture decisions are in `docs/adr/`.
 
 ## Repository map
 
-- `src/`: Rust binary; schema, doctor and renderer come later.
+- `src/`: Rust binary; config, module catalog, doctor, coordinator and dispatch.
 - `tests/`: CLI checks and bootstrap-tool tests.
 - `factory/factory.toml`: human-approved draft source of truth.
 - `.github/workflows/ci.yml`: required `CI` check.
@@ -35,6 +36,8 @@ Architecture decisions are in `docs/adr/`.
 ## Commands
 
 ```sh
+cargo run -- doctor
+cargo run -- doctor --config path/to/factory.toml
 just build
 just test
 just lint
@@ -44,6 +47,11 @@ just generate-configs
 just check-configs
 just workflows
 ```
+
+`doctor` checks local module assets and configured GitHub repository settings.
+It requires an authenticated `gh` CLI and makes read-only API calls. It does not
+verify token scopes, enforce path-author policy or model separation, or repair
+drift. Do not pass `--fix`.
 
 `just workflows` needs gh-aw v0.93.5 and actionlint.
 It compiles workflows; it does not run an agent.
