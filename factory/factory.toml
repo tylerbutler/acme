@@ -79,6 +79,7 @@ enabled = true
 implementation = "human"
 gate = "required-ci-and-resolved-threads"
 required_approvals = 0
+require_extra_approval_for_unattributed_changes = false
 auto_merge = false
 needs = ["ci"]
 provides = ["merged-pr"]
