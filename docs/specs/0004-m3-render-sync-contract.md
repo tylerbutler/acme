@@ -103,10 +103,10 @@ implementation agent may create that release or flip the live bootstrap flag.
 
 | Slice | Deliverable | Prerequisite |
 | --- | --- | --- |
-| A | Deterministic module selection, dependency/gate checks and render plan | M2 module catalog merged |
-| B | Local render command and exact golden fixtures | A merged |
-| C | Ownership record, safe sync, check mode and removal tests | B merged |
-| D | Version compatibility, upgrade tests and owner adoption guide | C and M2 repair slice merged |
+| [A: tylerbutler/acme#28](https://github.com/tylerbutler/acme/issues/28) | Deterministic module selection, dependency/gate checks and render plan | M2 module catalog merged |
+| [B: tylerbutler/acme#23](https://github.com/tylerbutler/acme/issues/23) | Local render command and exact golden fixtures | A merged |
+| [C: tylerbutler/acme#27](https://github.com/tylerbutler/acme/issues/27) | Ownership record, safe sync, check mode and removal tests | B merged |
+| [D: tylerbutler/acme#26](https://github.com/tylerbutler/acme/issues/26) | Version compatibility, upgrade tests and owner adoption guide | C and M2 repair slice merged |
 
 Planning can proceed alongside M2. Rendering work can follow its catalog
 without waiting for remote repairs; adoption requires the completed M2 doctor.
