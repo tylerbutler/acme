@@ -147,17 +147,25 @@ fn valid_repository(value: &str) -> bool {
     !owner.is_empty()
         && !repository.is_empty()
         && !repository.contains('/')
-        && [owner, repository].iter().all(|part| {
-            part.bytes()
-                .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.'))
-        })
+        && owner != "."
+        && owner != ".."
+        && repository != "."
+        && repository != ".."
+        && owner
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.'))
+        && repository
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.'))
 }
 
 fn valid_spec_path(value: &str) -> bool {
     value.starts_with("docs/specs/")
-        && value.ends_with(".md")
         && !value.starts_with('/')
         && !value.contains('\\')
+        && Path::new(value)
+            .extension()
+            .is_some_and(|extension| extension == "md")
         && value
             .split('/')
             .all(|part| !part.is_empty() && part != "." && part != "..")

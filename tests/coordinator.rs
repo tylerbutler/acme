@@ -107,7 +107,7 @@ fn eligibility(decisions: &[TaskDecision], issue: u64) -> Eligibility {
         .eligibility
 }
 
-fn prerequisite(issue: u64, owner_acceptance_required: bool) -> acme::Prerequisite {
+const fn prerequisite(issue: u64, owner_acceptance_required: bool) -> acme::Prerequisite {
     acme::Prerequisite {
         issue,
         owner_acceptance_required,
@@ -135,13 +135,26 @@ fn dependents_wait_for_merged_prerequisites_and_owner_receipts() {
     ]);
     state.observations[0].completion = Evidence::Known(Some(PrerequisiteCompletion {
         repository: "tylerbutler/acme".to_owned(),
-        issue: 43,
+        issue: 42,
         implementation_pull_request: 51,
         merge_commit: REVISION.to_owned(),
         merged_by: "tylerbutler".to_owned(),
         acceptance: None,
     }));
 
+    assert_eq!(
+        eligibility(&state.plan(), 44),
+        Eligibility::Blocked(acme::ReasonCode::PrerequisiteNotMerged)
+    );
+
+    state.observations[0].completion = Evidence::Known(Some(PrerequisiteCompletion {
+        repository: "tylerbutler/acme".to_owned(),
+        issue: 43,
+        implementation_pull_request: 51,
+        merge_commit: REVISION.to_owned(),
+        merged_by: "tylerbutler".to_owned(),
+        acceptance: None,
+    }));
     assert_eq!(
         eligibility(&state.plan(), 44),
         Eligibility::Blocked(acme::ReasonCode::OwnerAcceptanceMissing)
@@ -183,6 +196,23 @@ fn capacity_counts_existing_work_and_planned_assignments_deterministically() {
     assert_eq!(
         eligibility(&decisions, 44),
         Eligibility::Blocked(acme::ReasonCode::CapacityExhausted)
+    );
+}
+
+#[test]
+fn reconciliation_assignment_limit_is_applied_after_stable_issue_ordering() {
+    let mut state = TestPlan::new(vec![
+        declaration(44, Vec::new()),
+        declaration(43, Vec::new()),
+    ]);
+    state.config.max_assignments_per_reconciliation = 1;
+
+    let decisions = state.plan();
+
+    assert_eq!(eligibility(&decisions, 43), Eligibility::Eligible);
+    assert_eq!(
+        eligibility(&decisions, 44),
+        Eligibility::Blocked(acme::ReasonCode::ReconciliationLimitReached)
     );
 }
 

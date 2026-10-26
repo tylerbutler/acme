@@ -248,7 +248,7 @@ pub fn plan(input: &PlannerInput<'_>) -> Vec<TaskDecision> {
 
     for declaration in ordered {
         let reason = global_block
-            .or_else(|| match input.capacity {
+            .or(match input.capacity {
                 Evidence::Unknown => Some(ReasonCode::CapacityUnknown),
                 Evidence::Error => Some(ReasonCode::CapacityError),
                 Evidence::Known(_) => None,
@@ -278,14 +278,15 @@ pub fn plan(input: &PlannerInput<'_>) -> Vec<TaskDecision> {
                 )
             });
 
-        let eligibility = if let Some(reason) = reason {
-            Eligibility::Blocked(reason)
-        } else {
-            if used_active_work >= input.config.max_active_tasks {
+        let eligibility = match reason {
+            Some(reason) => Eligibility::Blocked(reason),
+            None if used_active_work >= input.config.max_active_tasks => {
                 Eligibility::Blocked(ReasonCode::CapacityExhausted)
-            } else if used_assignments >= input.config.max_assignments_per_reconciliation {
+            }
+            None if used_assignments >= input.config.max_assignments_per_reconciliation => {
                 Eligibility::Blocked(ReasonCode::ReconciliationLimitReached)
-            } else {
+            }
+            None => {
                 used_active_work += 1;
                 used_assignments += 1;
                 Eligibility::Eligible
@@ -363,6 +364,23 @@ fn declaration_reason(
         Some(_) => return Some(ReasonCode::AmbiguousObservation),
     };
 
+    observation_reason(declaration, observation, input).or_else(|| {
+        prerequisite_reason(
+            declaration,
+            input,
+            observations,
+            declarations,
+            duplicate_issues,
+            cycles,
+        )
+    })
+}
+
+fn observation_reason(
+    declaration: &DispatchDeclaration,
+    observation: &TaskObservation,
+    input: &PlannerInput<'_>,
+) -> Option<ReasonCode> {
     match &observation.current_spec {
         Evidence::Known(content) if content_sha256(content) == declaration.spec.sha256 => {}
         Evidence::Known(_) => return Some(ReasonCode::SpecChanged),
@@ -375,25 +393,8 @@ fn declaration_reason(
         Evidence::Unknown => return Some(ReasonCode::IssueBodyUnknown),
         Evidence::Error => return Some(ReasonCode::IssueBodyError),
     }
-    match &observation.approval {
-        Evidence::Unknown => return Some(ReasonCode::ApprovalUnknown),
-        Evidence::Error => return Some(ReasonCode::ApprovalError),
-        Evidence::Known(None) => return Some(ReasonCode::ApprovalMissing),
-        Evidence::Known(Some(approval)) => {
-            if !approval_matches(declaration, approval) {
-                return Some(ReasonCode::ApprovalMismatch);
-            }
-            if !approval.present_on_protected_main
-                || approval.spec_pull_request == 0
-                || !valid_sha256(&approval.spec_sha256)
-                || !valid_revision(&approval.main_revision)
-            {
-                return Some(ReasonCode::UnprotectedApproval);
-            }
-            if !contains_identity(input.authorized_approvers, &approval.merged_by) {
-                return Some(ReasonCode::UnauthorizedApprover);
-            }
-        }
+    if let Some(reason) = approval_reason(declaration, observation, input) {
+        return Some(reason);
     }
     match observation.issue_state {
         Evidence::Known(IssueState::Open) => {}
@@ -424,7 +425,45 @@ fn declaration_reason(
         Evidence::Unknown => return Some(ReasonCode::ExistingWorkUnknown),
         Evidence::Error => return Some(ReasonCode::ExistingWorkError),
     }
+    None
+}
 
+fn approval_reason(
+    declaration: &DispatchDeclaration,
+    observation: &TaskObservation,
+    input: &PlannerInput<'_>,
+) -> Option<ReasonCode> {
+    match &observation.approval {
+        Evidence::Unknown => return Some(ReasonCode::ApprovalUnknown),
+        Evidence::Error => return Some(ReasonCode::ApprovalError),
+        Evidence::Known(None) => return Some(ReasonCode::ApprovalMissing),
+        Evidence::Known(Some(approval)) => {
+            if !approval_matches(declaration, approval) {
+                return Some(ReasonCode::ApprovalMismatch);
+            }
+            if !approval.present_on_protected_main
+                || approval.spec_pull_request == 0
+                || !valid_sha256(&approval.spec_sha256)
+                || !valid_revision(&approval.main_revision)
+            {
+                return Some(ReasonCode::UnprotectedApproval);
+            }
+            if !contains_identity(input.authorized_approvers, &approval.merged_by) {
+                return Some(ReasonCode::UnauthorizedApprover);
+            }
+        }
+    }
+    None
+}
+
+fn prerequisite_reason(
+    declaration: &DispatchDeclaration,
+    input: &PlannerInput<'_>,
+    observations: &HashMap<u64, Vec<&TaskObservation>>,
+    declarations: &BTreeMap<u64, Vec<&DispatchDeclaration>>,
+    duplicate_issues: &HashSet<u64>,
+    cycles: &HashSet<u64>,
+) -> Option<ReasonCode> {
     for prerequisite in &declaration.prerequisites {
         let Some(rows) = declarations.get(&prerequisite.issue) else {
             return Some(ReasonCode::MissingPrerequisite);

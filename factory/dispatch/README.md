@@ -13,6 +13,17 @@ Prerequisites are unique and ordered by increasing issue number. An
 `owner_acceptance_required = true` prerequisite needs a separate acceptance
 receipt from the repository owner after its implementation PR merges.
 
+The strict TOML fields are:
+
+| Field | Meaning |
+| --- | --- |
+| `version` | Contract version; currently `1`. |
+| `repository`, `issue` | Exact `owner/repository` and positive issue number. |
+| `spec.path`, `spec.sha256` | Approved spec path and content hash. |
+| `issue_body.content`, `issue_body.sha256` | Approved body snapshot and content hash. |
+| `kind` | `implementation`, `planning_tracker`, or `manual_operation`. |
+| `prerequisites` | Ordered entries with a positive `issue` and optional boolean `owner_acceptance_required`. |
+
 Hash content as UTF-8 after converting CRLF and lone CR line endings to LF.
 Do not trim whitespace or normalize Unicode. Hash the resulting bytes with
 SHA-256 and write 64 lowercase hexadecimal characters. The issue-body snapshot
