@@ -56,9 +56,9 @@ come later; parsing a manifest does not prove its gate is implemented.
 
 | Slice | Deliverable | Prerequisite |
 | --- | --- | --- |
-| A | Config types, TOML loader and focused tests | This spec merged |
-| B | Generated factory schema, validation and freshness checks | A merged |
-| C | Manifest types, loader and CI metadata fixture | A merged |
+| [A: tylerbutler/acme#15](https://github.com/tylerbutler/acme/issues/15) | Config types, TOML loader and focused tests | This spec merged |
+| [B: tylerbutler/acme#16](https://github.com/tylerbutler/acme/issues/16) | Generated factory schema, validation and freshness checks | A merged |
+| [C: tylerbutler/acme#17](https://github.com/tylerbutler/acme/issues/17) | Manifest types, loader and CI metadata fixture | A merged |
 
 ## Non-goals and approval
 
