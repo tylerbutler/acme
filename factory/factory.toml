@@ -21,10 +21,12 @@ reason = "Owner requested no budgets or credit caps during bootstrap."
 
 [engines.intake]
 engine = "copilot"
+token_secret = "GH_PAT"
 
 [engines.build_cloud]
 engine = "copilot"
 model = "auto"
+token_secret = "GH_PAT"
 
 [engines.review]
 engine = "copilot"
@@ -53,8 +55,9 @@ gate = "owner-ready-for-agent"
 staged = true
 workflow_enabled = false
 assignment_enabled = false
-token_secret = "GH_AW_AGENT_TOKEN"
-token_configured = false
+token_secret = "GH_PAT"
+token_configured = true
+token_verified = false
 max_repositories = 1
 max_pull_requests = 1
 target_minutes = 59
@@ -125,7 +128,7 @@ milestone = "M0"
 golden_source = "hand-built"
 live_loop_verified = false
 deferred = [
-  "assignment PAT and paid end-to-end test",
+  "PAT permission verification and paid end-to-end test",
   "CLI schema and module manifest types",
   "doctor and enforced path policy",
   "render and sync",

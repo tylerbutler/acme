@@ -81,7 +81,8 @@ Intake cannot apply `ready-for-agent` or assign a builder.
 Do not remove staging or enable either workflow without owner approval.
 There are no monthly or per-run credit caps, by owner decision.
 Staging does not make a run free.
-The assignment PAT is absent; do not look for or reuse local credentials.
+`GH_PAT` is configured for inference and assignment; its access is unverified.
+Do not read its value, expose it, or reuse local credentials.
 Do not start a paid test run.
 
 ## Engineering rules

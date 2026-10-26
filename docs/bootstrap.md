@@ -55,21 +55,30 @@ no YAML dependency. The Rust doctor replaces this tool in M2.
 
 ## Credentials and explicit owner actions
 
-No assignment PAT is installed during bootstrap. Do not reuse the operator's
-local `gh` credential, copy it into Actions, or paste it into an issue.
+The repository secret `GH_PAT` supplies both authentication paths:
 
-Before assignment is enabled, create a fine-grained PAT for this repository
-using the permissions in the pinned gh-aw Copilot assignment documentation.
-Check that the repository and account allow Copilot cloud-agent assignment.
-Set the secret through the hidden prompt:
+- `engine.env.COPILOT_GITHUB_TOKEN` maps to `secrets.GH_PAT` in both workflows.
+- `safe-outputs.assign-to-agent.github-token` references `secrets.GH_PAT`.
+
+No duplicate `COPILOT_GITHUB_TOKEN` or `GH_AW_AGENT_TOKEN` secrets are needed.
+Do not put the token in workflow-level environment variables. Do not read or
+print its value, reuse the operator's local `gh` credential, or paste it into
+an issue. To replace it, use the hidden prompt:
 
 ```sh
-gh secret set GH_AW_AGENT_TOKEN --repo tylerbutler/acme
+gh secret set GH_PAT --repo tylerbutler/acme
 ```
 
-The intake/assignment workflow's Copilot engine also needs its documented
-engine authentication. The assignment PAT is not a substitute for that.
-Never add token values to the config or to version control.
+The shared fine-grained PAT must have resource owner `tylerbutler`, repository
+access limited to `acme`, and both permission sets:
+
+- Repository permissions: Metadata read; Actions, Contents, Issues and Pull
+  requests read and write.
+- Account permissions: Copilot Requests read.
+
+Its owner must have Copilot access, and the repository must allow cloud-agent
+assignment. Secret presence is confirmed; permissions and authentication have
+not been tested. Never add token values to the config or to version control.
 
 The owner must separately approve any paid test. To dry-run:
 

@@ -36,7 +36,8 @@ and tests.
 Both agent workflows are disabled in GitHub and gated by repository variables.
 Their safe outputs are staged. **Staged mode still uses AI credits if a workflow
 runs.** No monthly budget or AI-credit cap is configured, by owner decision.
-`GH_AW_AGENT_TOKEN` is not configured. See
+Both authentication paths use `GH_PAT`; its permissions and Copilot access are
+not yet verified. See
 [the bootstrap guide](docs/bootstrap.md) before enabling anything.
 
 M0's live issue-to-agent-PR acceptance check is deliberately not run. Holdout,
