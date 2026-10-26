@@ -145,7 +145,10 @@ still costs money. Do not equate workflow registration with live activation.
 After code review and merge, separately approve concurrency/retry limits,
 bounded migration enrollment, staged/live evidence and activation. Keep the
 existing two live workflows and their settings unchanged during planning.
-No live test, paid run or activation is authorized by merging this spec alone.
+Once active, an approved spec/task declaration authorizes its bounded build
+dispatch without a per-task label or per-run approval. PR merges remain human.
+Merging this policy proposal alone authorizes no live test, paid run or
+activation.
 
 No auto-merge, open-ended task generation, hidden provider substitution,
 automatic secret/provisioning/release actions or inferred approval from issue
