@@ -1,0 +1,16 @@
+{
+  "SessionStart": [
+    {
+      "matcher": "startup|clear|compact",
+      "hooks": [
+        {
+          "type": "command",
+          "shell": "bash",
+          "async": false,
+          "command": "\"${CLAUDE_PROJECT_DIR}/.claude/hooks/superpowers/hooks/run-hook.cmd\" session-start"
+        }
+      ],
+      "_apm_source": "obra/superpowers"
+    }
+  ]
+}
