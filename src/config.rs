@@ -10,6 +10,7 @@ use std::path::{Path, PathBuf};
 pub struct FactoryConfig {
     pub schema_version: u32,
     pub repository: String,
+    pub coordinator: CoordinatorConfig,
     pub profile: String,
     pub languages: Vec<String>,
     pub autonomy: String,
@@ -28,6 +29,8 @@ struct RawFactoryConfig {
     #[schemars(range(min = 0, max = 0))]
     schema_version: u32,
     repository: String,
+    #[serde(default)]
+    coordinator: CoordinatorConfig,
     profile: String,
     languages: Vec<String>,
     autonomy: String,
@@ -63,6 +66,7 @@ impl FactoryConfig {
         let config = Self {
             schema_version: parsed.schema_version,
             repository: parsed.repository,
+            coordinator: parsed.coordinator,
             profile: parsed.profile,
             languages: parsed.languages,
             autonomy: parsed.autonomy,
@@ -89,6 +93,19 @@ impl FactoryConfig {
 
         Ok(config)
     }
+}
+
+#[derive(Debug, Default, Deserialize, Eq, JsonSchema, PartialEq)]
+#[serde(deny_unknown_fields)]
+pub struct CoordinatorConfig {
+    #[serde(default)]
+    pub automatic_dispatch: bool,
+    #[serde(default)]
+    pub max_active_tasks: u32,
+    #[serde(default)]
+    pub max_assignments_per_reconciliation: u32,
+    #[serde(default)]
+    pub max_attempts: u32,
 }
 
 #[derive(Debug)]

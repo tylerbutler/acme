@@ -9,6 +9,8 @@ fn loads_factory_fixture_and_disabled_module_stubs() {
 
     assert_eq!(config.schema_version, 0);
     assert_eq!(config.repository, "tylerbutler/acme");
+    assert!(!config.coordinator.automatic_dispatch);
+    assert_eq!(config.coordinator.max_active_tasks, 0);
     assert_eq!(config.engines.intake.token_secret, "GH_PAT");
     assert!(!config.modules.review.enabled);
     assert!(!config.modules.holdout.enabled);

@@ -25,6 +25,19 @@ fn generated_schema_declares_a_dialect_and_validates_raw_factory_toml() {
     let validator = jsonschema::validator_for(&schema).expect("generated schema should be valid");
 
     assert!(validator.is_valid(&json_value));
+
+    assert!(
+        schema["properties"]["coordinator"].is_object(),
+        "schema should support optional coordinator settings"
+    );
+    assert!(
+        !schema["required"]
+            .as_array()
+            .expect("required fields should be an array")
+            .iter()
+            .any(|field| field == "coordinator"),
+        "coordinator settings should remain optional for the existing fixture"
+    );
 }
 
 #[test]
