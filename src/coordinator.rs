@@ -218,86 +218,139 @@ pub struct TaskDecision {
     pub eligibility: Eligibility,
 }
 
+/// Plan a batch in issue order and reserve capacity for each eligible task.
 #[must_use]
 pub fn plan(input: &PlannerInput<'_>) -> Vec<TaskDecision> {
-    let mut declarations_by_issue: BTreeMap<u64, Vec<&DispatchDeclaration>> = BTreeMap::new();
-    for declaration in input.declarations {
-        declarations_by_issue
-            .entry(declaration.issue)
-            .or_default()
-            .push(declaration);
-    }
-    let duplicate_issues: HashSet<u64> = declarations_by_issue
-        .iter()
-        .filter_map(|(issue, declarations)| (declarations.len() > 1).then_some(*issue))
-        .collect();
-    let observations_by_issue = observations_by_issue(input.observations);
-    let cycles = dependency_cycles(&declarations_by_issue, &duplicate_issues);
-
-    let global_block = global_block(input);
-    let capacity = match input.capacity {
-        Evidence::Known(capacity) => Some(*capacity),
-        Evidence::Unknown | Evidence::Error => None,
-    };
-    let mut used_active_work = capacity.map_or(0, |value| value.active_work);
-    let mut used_assignments = capacity.map_or(0, |value| value.assignments_this_reconciliation);
-
+    let graph = TaskGraph::new(input.declarations, input.observations);
+    let (mut used_active_work, mut used_assignments) = known_capacity(input.capacity);
     let mut decisions = Vec::with_capacity(input.declarations.len());
     let mut ordered: Vec<_> = input.declarations.iter().collect();
     ordered.sort_by_key(|declaration| declaration.issue);
 
     for declaration in ordered {
-        let reason = global_block
-            .or(match input.capacity {
-                Evidence::Unknown => Some(ReasonCode::CapacityUnknown),
-                Evidence::Error => Some(ReasonCode::CapacityError),
-                Evidence::Known(_) => None,
-            })
-            .or_else(|| {
-                if duplicate_issues.contains(&declaration.issue) {
-                    Some(ReasonCode::DuplicateDeclaration)
-                } else {
-                    None
-                }
-            })
-            .or_else(|| {
-                if cycles.contains(&declaration.issue) {
-                    Some(ReasonCode::DependencyCycle)
-                } else {
-                    None
-                }
-            })
-            .or_else(|| {
-                declaration_reason(
-                    declaration,
-                    input,
-                    &observations_by_issue,
-                    &declarations_by_issue,
-                    &duplicate_issues,
-                    &cycles,
-                )
-            });
-
-        let eligibility = match reason {
-            Some(reason) => Eligibility::Blocked(reason),
-            None if used_active_work >= input.config.max_active_tasks => {
-                Eligibility::Blocked(ReasonCode::CapacityExhausted)
-            }
-            None if used_assignments >= input.config.max_assignments_per_reconciliation => {
-                Eligibility::Blocked(ReasonCode::ReconciliationLimitReached)
-            }
-            None => {
-                used_active_work += 1;
-                used_assignments += 1;
-                Eligibility::Eligible
-            }
-        };
+        let eligibility = capacity_eligibility(
+            task_reason(declaration, input, &graph),
+            input,
+            used_active_work,
+            used_assignments,
+        );
+        if eligibility == Eligibility::Eligible {
+            used_active_work += 1;
+            used_assignments += 1;
+        }
         decisions.push(TaskDecision {
             issue: declaration.issue,
             eligibility,
         });
     }
     decisions
+}
+
+/// Check one selected task without reserving slots for other eligible tasks.
+pub(crate) fn target_eligibility(input: &PlannerInput<'_>, issue: u64) -> Eligibility {
+    let graph = TaskGraph::new(input.declarations, input.observations);
+    let Some(declaration) = graph.declarations.get(&issue).and_then(|rows| rows.first()) else {
+        return Eligibility::Blocked(ReasonCode::InvalidDeclaration);
+    };
+    let (active_work, assignments) = known_capacity(input.capacity);
+    capacity_eligibility(
+        task_reason(declaration, input, &graph),
+        input,
+        active_work,
+        assignments,
+    )
+}
+
+struct TaskGraph<'a> {
+    declarations: BTreeMap<u64, Vec<&'a DispatchDeclaration>>,
+    duplicates: HashSet<u64>,
+    observations: HashMap<u64, Vec<&'a TaskObservation>>,
+    cycles: HashSet<u64>,
+}
+
+impl<'a> TaskGraph<'a> {
+    fn new(declarations: &'a [DispatchDeclaration], observations: &'a [TaskObservation]) -> Self {
+        let mut declarations_by_issue: BTreeMap<u64, Vec<&DispatchDeclaration>> = BTreeMap::new();
+        for declaration in declarations {
+            declarations_by_issue
+                .entry(declaration.issue)
+                .or_default()
+                .push(declaration);
+        }
+        let duplicate_issues: HashSet<u64> = declarations_by_issue
+            .iter()
+            .filter_map(|(issue, declarations)| (declarations.len() > 1).then_some(*issue))
+            .collect();
+        let cycles = dependency_cycles(&declarations_by_issue, &duplicate_issues);
+        Self {
+            declarations: declarations_by_issue,
+            duplicates: duplicate_issues,
+            observations: observations_by_issue(observations),
+            cycles,
+        }
+    }
+}
+
+const fn known_capacity(capacity: &Evidence<CapacityState>) -> (u32, u32) {
+    match capacity {
+        Evidence::Known(value) => (value.active_work, value.assignments_this_reconciliation),
+        Evidence::Unknown | Evidence::Error => (0, 0),
+    }
+}
+
+fn task_reason(
+    declaration: &DispatchDeclaration,
+    input: &PlannerInput<'_>,
+    graph: &TaskGraph<'_>,
+) -> Option<ReasonCode> {
+    global_block(input)
+        .or(match input.capacity {
+            Evidence::Unknown => Some(ReasonCode::CapacityUnknown),
+            Evidence::Error => Some(ReasonCode::CapacityError),
+            Evidence::Known(_) => None,
+        })
+        .or_else(|| {
+            if graph.duplicates.contains(&declaration.issue) {
+                Some(ReasonCode::DuplicateDeclaration)
+            } else {
+                None
+            }
+        })
+        .or_else(|| {
+            if graph.cycles.contains(&declaration.issue) {
+                Some(ReasonCode::DependencyCycle)
+            } else {
+                None
+            }
+        })
+        .or_else(|| {
+            declaration_reason(
+                declaration,
+                input,
+                &graph.observations,
+                &graph.declarations,
+                &graph.duplicates,
+                &graph.cycles,
+            )
+        })
+}
+
+const fn capacity_eligibility(
+    reason: Option<ReasonCode>,
+    input: &PlannerInput<'_>,
+    used_active_work: u32,
+    used_assignments: u32,
+) -> Eligibility {
+    match reason {
+        Some(reason) => Eligibility::Blocked(reason),
+        None if used_active_work >= input.config.max_active_tasks => {
+            Eligibility::Blocked(ReasonCode::CapacityExhausted)
+        }
+        None if used_assignments >= input.config.max_assignments_per_reconciliation => {
+            Eligibility::Blocked(ReasonCode::ReconciliationLimitReached)
+        }
+        None => Eligibility::Eligible,
+    }
 }
 
 fn global_block(input: &PlannerInput<'_>) -> Option<ReasonCode> {

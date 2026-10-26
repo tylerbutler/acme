@@ -5,7 +5,7 @@ use crate::assignment::{
 };
 use crate::coordinator::{
     CapacityState, Eligibility, Evidence, KillSwitches, PlannerInput, ReasonCode, TaskObservation,
-    plan,
+    target_eligibility,
 };
 use crate::dispatch::{DispatchDeclaration, content_sha256, valid_sha256};
 use serde::{Deserialize, Serialize};
@@ -462,30 +462,26 @@ fn authorize(
         context,
         binding.issue,
     ));
-    let decisions = plan(&PlannerInput {
-        config: &config,
-        repository: &context.repository,
-        owner_login: &snapshot.owner_login,
-        authorized_approvers: &snapshot.authorized_approvers,
-        kill_switches: &snapshot.kill_switches,
-        capacity: &capacity,
-        declarations: &declarations,
-        observations: &snapshot.observations,
-    });
-    match decisions
-        .iter()
-        .find(|decision| decision.issue == binding.issue)
-        .map(|decision| decision.eligibility)
-    {
-        Some(Eligibility::Eligible) => Ok(()),
-        Some(Eligibility::Blocked(ReasonCode::CapacityExhausted)) => {
-            Err(ClaimBlock::CapacityExhausted)
-        }
-        Some(Eligibility::Blocked(ReasonCode::ReconciliationLimitReached)) => {
+    let eligibility = target_eligibility(
+        &PlannerInput {
+            config: &config,
+            repository: &context.repository,
+            owner_login: &snapshot.owner_login,
+            authorized_approvers: &snapshot.authorized_approvers,
+            kill_switches: &snapshot.kill_switches,
+            capacity: &capacity,
+            declarations: &declarations,
+            observations: &snapshot.observations,
+        },
+        binding.issue,
+    );
+    match eligibility {
+        Eligibility::Eligible => Ok(()),
+        Eligibility::Blocked(ReasonCode::CapacityExhausted) => Err(ClaimBlock::CapacityExhausted),
+        Eligibility::Blocked(ReasonCode::ReconciliationLimitReached) => {
             Err(ClaimBlock::ReconciliationLimitReached)
         }
-        Some(Eligibility::Blocked(reason)) => Err(ClaimBlock::Ineligible(reason)),
-        None => Err(ClaimBlock::SnapshotMismatch),
+        Eligibility::Blocked(reason) => Err(ClaimBlock::Ineligible(reason)),
     }
 }
 

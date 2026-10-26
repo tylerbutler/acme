@@ -168,7 +168,7 @@ incapable of meeting it.
 - `assign` returns `Accepted`, `NotAssigned`, or `Unknown`. Unknown outcomes
   pass through without retries. Future claims code must reconcile them.
 
-There is no production GitHub assignment transport, CLI command, claim engine
+There is no production GitHub assignment transport, CLI command
 or installed workflow in this proof. A fake transport's supported result does
 not confer a capability on gh-aw or prove an actual assignment.
 
@@ -181,3 +181,110 @@ contract and its mutable-context risk. A different API or provider is not an
 implicit fallback. Do not mark the full handoff supported, enroll tasks, change
 the manual owner-label route, or activate the coordinator from this proof.
 No live or paid validation is authorized here.
+
+## Shared claims and reconciliation (#54)
+
+`src/claims.rs` implements an offline reconciliation engine against
+`ClaimStore`, `GitHubState`, and the existing `AssignmentTransport`.
+Both manual and automatic callers use `reconcile`. No CLI command or installed
+workflow calls this engine. Tests use a shared in-memory store; they prove the
+engine and persistence contract, **not production GitHub durability**.
+The owner approved deferring the production GitHub adapter to slice C.
+The unsupported snapshot handoff above still blocks assignment.
+
+### Persistence and trust boundary
+
+The future adapter must meet all of these conditions before installation:
+
+- Store the complete ordered journal in GitHub. Do not use a local queue,
+  issue labels, or mutable issue/comment text as claim authority.
+- `ClaimStore::lock` must exclude every other coordinator mutation in the
+  repository, across both routes and all runs. Hold exclusion through journal
+  reads, both state reads, intent persistence, assignment, and result persistence.
+  An expiring lease alone is not enough. A lost session must prevent further
+  assignment, including from a paused old producer. The adapter must prove this
+  property; this engine does not supply a distributed lock.
+- `ClaimSession::load` must return the complete journal in append order.
+  Paginate fully and fail on missing, ambiguous, or unreadable state.
+  `append` may acknowledge only a durable write. A timeout can mean the write
+  succeeded. Do not discard receipts or perform automatic write retries.
+- Obtain `ReceiptProvenance` from authenticated server metadata and verified
+  workflow-run evidence, separately from receipt JSON. Verify the repository,
+  writer identity, workflow path, exact workflow revision, run ID and run attempt,
+  and protected-main origin. A matching bot name in comment text is not proof.
+  If GitHub cannot establish this provenance, fail closed.
+- Build `ReconcileContext` from trusted workflow configuration and run metadata.
+  Never accept the expected writer, workflow, repository, or run from agent
+  output or issue text. The current workflow revision must match the request's
+  approved main revision. Do not silently rebind an old claim to a new revision.
+
+Receipts use strict version `1` JSON data. Each attempt binds the repository,
+issue, full contract hash, approved main revision, attempt number, and originating
+workflow run. Each record also identifies its publishing run. This permits a
+later trusted run to record reconciliation of an older attempt without
+impersonating its original run. Receipt data does not attest its own provenance.
+Invalid provenance or an invalid journal transition blocks the entire read.
+
+### State and authorization boundary
+
+`GitHubState::observe` must return a fresh, complete snapshot from trusted APIs
+and protected main. Fetch all active Copilot work and open unmerged
+implementation PRs, including drafts and PRs waiting for human review.
+Unknown work state, API errors, and incomplete pagination must fail closed.
+Resolve issue/PR links from trusted repository evidence, not agent-supplied
+target aliases.
+
+Before creating an intent, the engine verifies the request against the full
+approved contract and revision. It uses the existing pure planner's approval,
+scope, dependency, human-acceptance, and kill-switch checks. Manual dispatch
+also requires a current `ready-for-agent` label applied by the owner to this
+exact issue. Manual dispatch does not require automatic dispatch to be enabled;
+it does not bypass the other gates or capacity checks.
+
+The engine counts each unresolved claimed issue as at least one active slot.
+It counts actual Copilot assignments and open implementation PRs conservatively,
+even when both refer to one issue. An already-counted issue's claim does not add
+another slot. It counts every persisted intent against the originating run's
+reconciliation limit, including failed attempts. Rerunning that run does not
+reset its limit. Other eligible but unrequested tasks do not reserve slots.
+The outer reconciliation driver selects task order. Each call checks only its
+selected task; unlike the batch planner, it does not rank sibling tasks.
+
+After a durable `pending` intent, the engine fetches and checks authorization,
+work, recovery evidence, and capacity again immediately before `handoff`.
+The assignment request remains immutable. No agent output selects its repository,
+issue, snapshot, contract hash, or revision.
+
+### Outcomes and bounded recovery
+
+- `Accepted`, `NotAssigned`, and `Unknown` transport outcomes produce distinct
+  receipt states and results. A failed intent write prevents assignment.
+  A failed result write leaves the durable intent as a recovery barrier.
+- Existing actual agent work or an open PR blocks assignment. Observed work
+  can reconcile a pending/unknown receipt to accepted without a new assignment.
+- No claim expires based on time. Absence of work alone does not permit retry.
+  An uncertain call or stale intent requires an exact `AttemptResolution`.
+- A retry resolution must prove that the original producer cannot resume or
+  create delayed work, and that assignment never occurred or the associated
+  work has definitively failed or been cancelled. A terminal workflow status
+  alone is insufficient. Verify all downstream agent and PR state.
+  If that proof is unavailable, return unknown evidence and request human action.
+- Recovery requires a different workflow run and fresh authorization. The
+  configured positive `max_attempts` bounds attempts across both routes.
+  Recheck the same resolution before the retry call. An accepted merged
+  implementation resolution marks the claim complete; it does not dispatch
+  again. Separate owner-acceptance prerequisites remain planner checks.
+
+Run the credential-free tests with:
+
+```sh
+cargo test --locked --test claims --test coordinator --test assignment
+just check
+```
+
+The tests cover shared-store races, capacity, final authorization changes,
+target/snapshot substitution, provenance, receipt serialization, partial writes,
+API errors, unknown outcomes, and bounded recovery. No test creates GitHub work
+or starts inference. Slice C must prove the real adapters and serialization
+mechanism before installation; this change does not authorize rollout or paid
+tests.
