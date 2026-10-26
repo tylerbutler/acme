@@ -25,11 +25,30 @@ fn generated_schema_declares_a_dialect_and_validates_raw_factory_toml() {
     let validator = jsonschema::validator_for(&schema).expect("generated schema should be valid");
 
     assert!(validator.is_valid(&json_value));
+
+    assert!(
+        schema["properties"]["coordinator"].is_object(),
+        "schema should support optional coordinator settings"
+    );
+    assert!(
+        !schema["required"]
+            .as_array()
+            .expect("required fields should be an array")
+            .iter()
+            .any(|field| field == "coordinator"),
+        "coordinator settings should remain optional for the existing fixture"
+    );
 }
 
 #[test]
 fn schema_and_rust_reject_the_same_parsed_toml_contract_errors() {
     let schema = serde_json::to_value(factory_schema()).expect("schema should serialize");
+
+    let coordinator = FACTORY.replace(
+        "[bootstrap]",
+        "[coordinator]\nautomatic_dispatch = true\nmax_active_tasks = 2\nmax_assignments_per_reconciliation = 1\nmax_attempts = 3\n\n[bootstrap]",
+    );
+    assert_schema_and_rust_agree(&schema, &coordinator);
 
     let unsupported_version = FACTORY.replace("schema_version = 0", "schema_version = 1");
     assert_schema_and_rust_agree(&schema, &unsupported_version);

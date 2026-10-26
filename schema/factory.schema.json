@@ -26,6 +26,9 @@
     "budget": {
       "$ref": "#/definitions/BudgetConfig"
     },
+    "coordinator": {
+      "$ref": "#/definitions/CoordinatorConfig"
+    },
     "engines": {
       "$ref": "#/definitions/EnginesConfig"
     },
@@ -256,6 +259,34 @@
           "items": {
             "type": "string"
           }
+        }
+      },
+      "additionalProperties": false
+    },
+    "CoordinatorConfig": {
+      "type": "object",
+      "properties": {
+        "automatic_dispatch": {
+          "default": false,
+          "type": "boolean"
+        },
+        "max_active_tasks": {
+          "default": 0,
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "max_assignments_per_reconciliation": {
+          "default": 0,
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "max_attempts": {
+          "default": 0,
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
         }
       },
       "additionalProperties": false
