@@ -1,0 +1,29 @@
+---
+name: Offline assignment proof
+on:
+  workflow_dispatch:
+  issues:
+    types: [labeled]
+  issue_comment:
+    types: [created]
+if: github.event_name == 'offline_proof_never'
+permissions:
+  contents: read
+  issues: read
+engine: copilot
+max-ai-credits: 1
+timeout-minutes: 2
+network:
+  allowed: [defaults, github]
+safe-outputs:
+  assign-to-agent:
+    name: copilot
+    allowed: [copilot]
+    target: @@TARGET@@
+    target-repo: @@REPOSITORY@@
+    max: 1
+    custom-instructions: |
+@@INSTRUCTIONS@@
+---
+
+This is an offline compilation fixture. Do not install or run this workflow.
