@@ -1,8 +1,10 @@
+pub mod catalog;
 pub mod config;
 pub mod coordinator;
 pub mod dispatch;
 pub mod manifest;
 
+pub use catalog::{BuiltinModule, ConfigBinding, ModuleAsset, builtin_modules};
 pub use config::{ConfigError, CoordinatorConfig, FactoryConfig};
 pub use coordinator::{
     AcceptanceReceipt, ApprovalEvidence, CapacityState, Eligibility, Evidence, ExistingWork,

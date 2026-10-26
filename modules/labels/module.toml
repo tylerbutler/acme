@@ -1,0 +1,4 @@
+name = "labels"
+needs = []
+provides = ["labels"]
+gate = "enabled-intake"

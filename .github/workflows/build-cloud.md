@@ -37,9 +37,12 @@ safe-outputs:
     github-token: ${{ secrets.GH_PAT }}
     custom-instructions: >-
       Follow AGENTS.md and the issue's approved spec. Work only in this repository
-      and open one draft PR. Do not merge or change workflow enablement, tokens,
-      budgets, rulesets or never-agent paths. Keep the task small enough to finish
-      in under 59 minutes; stop and ask the owner to split it if that is not feasible.
+      and open one draft PR. Use a Conventional Commits PR title with a type from
+      commit-types.json, for example "feat: add module manifests". Use draft
+      status, not a [WIP] title prefix. Do not merge or change workflow enablement,
+      tokens, budgets, rulesets or never-agent paths. Keep the task small enough
+      to finish in under 59 minutes; stop and ask the owner to split it if that
+      is not feasible.
 ---
 
 # Owner-approved cloud build
