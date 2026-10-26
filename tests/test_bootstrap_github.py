@@ -41,5 +41,29 @@ class RulesetTests(unittest.TestCase):
         self.assertEqual(gh.call_count, 1)
 
 
+class WorkflowTests(unittest.TestCase):
+    @patch.object(bootstrap, "gh")
+    def test_disables_active_workflow(self, gh):
+        gh.return_value = '{"state": "active"}'
+        bootstrap.disable_workflow("owner/acme", "intake.lock.yml")
+        gh.assert_called_with("workflow", "disable", "intake.lock.yml",
+                              "--repo", "owner/acme")
+
+    @patch.object(bootstrap, "gh")
+    def test_does_not_disable_an_already_disabled_workflow(self, gh):
+        gh.return_value = '{"state": "disabled_manually"}'
+        bootstrap.disable_workflow("owner/acme", "intake.lock.yml")
+        gh.assert_called_once_with(
+            "api", "repos/owner/acme/actions/workflows/intake.lock.yml"
+        )
+
+    @patch.object(bootstrap, "gh")
+    def test_rejects_deleted_workflow(self, gh):
+        gh.return_value = '{"state": "deleted"}'
+        with self.assertRaisesRegex(ValueError, "Unexpected state"):
+            bootstrap.disable_workflow("owner/acme", "intake.lock.yml")
+        self.assertEqual(gh.call_count, 1)
+
+
 if __name__ == "__main__":
     unittest.main()
