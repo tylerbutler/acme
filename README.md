@@ -35,7 +35,8 @@ and tests.
 
 Both agent workflows are disabled in GitHub and gated by repository variables.
 Their safe outputs are staged. **Staged mode still uses AI credits if a workflow
-runs.** No monthly budget or AI-credit cap is configured, by owner decision.
+runs.** Each main agent run has a 5000-AI-credit cap; monthly and daily budgets
+are off.
 Both authentication paths use `GH_PAT`; its permissions and Copilot access are
 not yet verified. See
 [the bootstrap guide](docs/bootstrap.md) before enabling anything.

@@ -16,8 +16,9 @@ version = "v0.93.5"
 
 [budget]
 enforce_monthly = false
-enforce_ai_credits = false
-reason = "Owner requested no budgets or credit caps during bootstrap."
+enforce_ai_credits = true
+max_ai_credits_per_run = 5000
+reason = "Owner approved 5000 AI credits per main agent run; monthly and daily budgets remain off."
 
 [engines.intake]
 engine = "copilot"

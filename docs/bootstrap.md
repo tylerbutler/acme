@@ -20,8 +20,10 @@ repository owner. Only the `ready-for-agent` label can trigger assignment.
 Both agent workflows are disabled in GitHub, and both enablement variables
 are `false`. Safe outputs are also staged. These are separate controls:
 staging prevents safe-output writes, but does not prevent paid inference.
-Both credit fields are explicitly `-1` in the workflow sources: omitting them
-would allow gh-aw's built-in credit caps to apply.
+`max-ai-credits: 5000` caps each main agent run. The pinned firewall rejects the
+negative no-cap value before inference, so this limit must be positive.
+`max-daily-ai-credits: -1` keeps the daily cap off.
+Threat detection keeps its separate compiler-default credit limit.
 
 ## Recompile workflow fixtures
 
@@ -98,7 +100,7 @@ Verify a draft agent PR, green required CI, and a human merge. Until then,
 
 ## Deferred safeguards and exceptions
 
-- No monthly budget or per-run credit cap, by explicit owner decision.
+- No monthly or daily budget; each main agent run has a 5000-AI-credit cap.
 - No paid run or live-loop verification during this bootstrap.
 - No release pin: there is no released CLI. `target_version` is not an install pin.
 - No automated review. Copilot will run review with a different model from build.

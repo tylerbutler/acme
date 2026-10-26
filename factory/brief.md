@@ -17,8 +17,8 @@ Use L3 autonomy. A human approves the config, adds `ready-for-agent`, reviews
 changes and merges. The schema, modules and renderer always need human merge.
 Secrets and private holdout scenarios must never be changed or exposed by agents.
 
-Do not configure monthly budgets or AI-credit caps at this stage. This is an
-explicit exception to the original safe-default plan. Keep agent workflows
+Use a 5000-AI-credit cap per main agent run. Do not configure monthly or daily
+budgets at this stage. Keep agent workflows
 disabled and staged, leave assignment off while its PAT is absent, and do not
 start a paid agent run during bootstrap.
 

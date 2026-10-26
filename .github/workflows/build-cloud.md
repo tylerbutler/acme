@@ -17,7 +17,7 @@ engine:
   id: copilot
   env:
     COPILOT_GITHUB_TOKEN: ${{ secrets.GH_PAT }}
-max-ai-credits: -1
+max-ai-credits: 5000
 max-daily-ai-credits: -1
 timeout-minutes: 5
 network:
