@@ -26,7 +26,7 @@ tools:
   github:
     toolsets: [issues, labels]
 safe-outputs:
-  staged: true
+  staged: false
   assign-to-agent:
     name: copilot
     model: auto

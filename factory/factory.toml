@@ -53,7 +53,7 @@ provides = ["approved-spec"]
 [modules.build_cloud]
 enabled = true
 gate = "owner-ready-for-agent"
-staged = true
+staged = false
 workflow_enabled = false
 assignment_enabled = false
 token_secret = "GH_PAT"

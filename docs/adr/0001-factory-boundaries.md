@@ -22,8 +22,10 @@ under human merge even if later profiles allow lower-risk auto-merge.
 Solo mode needs zero required approvals because an owner cannot approve a
 requested agent PR. Require CI and resolved threads instead.
 
-Keep agent jobs read-only and route writes through staged safe outputs.
-Keep workflows disabled until the owner approves credentials and paid testing.
+Keep agent jobs read-only and route writes through safe outputs. Both workflows
+started with staged outputs. After its staged preview passed, build-cloud uses
+live assignment; intake stays staged. Workflow and variable gates remain off
+until the owner approves credentials and paid testing.
 The owner initially declined budget caps, then approved 5000 AI credits per
 main agent run after the pinned firewall rejected the negative no-cap value.
 Monthly and daily budgets remain off. Staged runs still use AI credits.

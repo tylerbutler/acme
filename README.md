@@ -34,11 +34,12 @@ and tests.
 | `docs/adr/0001-factory-boundaries.md` | Architecture and bootstrap exceptions |
 
 Both agent workflows are disabled in GitHub and gated by repository variables.
-Their safe outputs are staged. **Staged mode still uses AI credits if a workflow
-runs.** Each main agent run has a 5000-AI-credit cap; monthly and daily budgets
-are off.
-Both authentication paths use `GH_PAT`; its permissions and Copilot access are
-not yet verified. See
+Intake safe outputs remain staged. **Build-cloud assignment is live when its
+workflow and both variable gates are enabled and the owner adds
+`ready-for-agent`.** Staged runs also use AI credits. Each main agent run has a
+5000-AI-credit cap; monthly and daily budgets are off.
+Both authentication paths use `GH_PAT`. Inference and staged assignment passed;
+live assignment permissions remain unverified. See
 [the bootstrap guide](docs/bootstrap.md) before enabling anything.
 
 M0's live issue-to-agent-PR acceptance check is deliberately not run. Holdout,

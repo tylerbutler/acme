@@ -18,8 +18,10 @@ Build-cloud checks both the original actor and the rerun actor against the
 repository owner. Only the `ready-for-agent` label can trigger assignment.
 
 Both agent workflows are disabled in GitHub, and both enablement variables
-are `false`. Safe outputs are also staged. These are separate controls:
-staging prevents safe-output writes, but does not prevent paid inference.
+are `false`. Intake safe outputs remain staged. Build-cloud assignment is live
+when its workflow and both variable gates are enabled and the owner adds
+`ready-for-agent`. Enabling the workflow alone leaves its jobs skipped.
+Staging prevents safe-output writes, but does not prevent paid inference.
 `max-ai-credits: 5000` caps each main agent run. The pinned firewall rejects the
 negative no-cap value before inference, so this limit must be positive.
 `max-daily-ai-credits: -1` keeps the daily cap off.
@@ -79,29 +81,48 @@ access limited to `acme`, and both permission sets:
 - Account permissions: Copilot Requests read.
 
 Its owner must have Copilot access, and the repository must allow cloud-agent
-assignment. Secret presence is confirmed; permissions and authentication have
-not been tested. Never add token values to the config or to version control.
+assignment. Inference and the staged assignment preview passed. Live assignment
+permissions remain unverified. Never add token values to the config or to
+version control.
 
-The owner must separately approve any paid test. To dry-run:
+The owner must separately approve each paid test. Both workflows and both
+enablement variables must remain off between tests.
 
-1. Verify credentials and choose a small, non-sensitive issue.
-2. Enable the relevant workflow in GitHub, set
-   `ACME_AGENT_WORKFLOWS_ENABLED=true`, and keep `safe-outputs.staged: true`.
-3. Open an issue as the owner and inspect intake's staged output.
-4. For assignment preview, also set `ACME_CLOUD_ASSIGNMENT_ENABLED=true` and
-   have the owner add `ready-for-agent` to a fully specified issue.
-5. Restore both variables to `false` and disable both workflows.
+### Staged tests
 
-A staged assignment does not create an agent PR. After the dry run, a live
-end-to-end test needs another explicit owner approval, a reviewed PR that
-removes staging for the required outputs, and the corresponding config update.
-Verify a draft agent PR, green required CI, and a human merge. Until then,
-`bootstrap.live_loop_verified` remains `false`.
+For an intake preview, enable only Intake and set
+`ACME_AGENT_WORKFLOWS_ENABLED=true`. Keep
+`ACME_CLOUD_ASSIGNMENT_ENABLED=false`, open an issue as the owner and inspect
+the staged output. Then restore both variables to `false` and disable both
+workflows.
+
+Build-cloud is no longer staged. Another assignment preview first needs a
+reviewed and merged change that sets `safe-outputs.staged: true`, updates
+`modules.build_cloud.staged` and recompiles the lock file. Do not enable the
+current build-cloud workflow expecting a preview.
+
+### One live assignment
+
+1. Obtain explicit owner approval for one paid live assignment to a small issue
+   with a goal, acceptance scenarios, non-goals and an approved spec link.
+2. Keep Intake disabled and enable only Build cloud.
+3. Set both `ACME_AGENT_WORKFLOWS_ENABLED` and
+   `ACME_CLOUD_ASSIGNMENT_ENABLED` to `true`.
+4. Have the owner remove and reapply `ready-for-agent` on that issue to create
+   a new label event.
+5. After the assignment run, even if it fails, restore both variables to `false`
+   and disable both workflows. The separate builder can continue after cleanup.
+6. Verify the actual Copilot assignment, one draft PR, green required CI, and a
+   human review and merge.
+
+The staged previews did not verify live assignment permissions. Keep
+`bootstrap.live_loop_verified=false` until the live loop passes.
 
 ## Deferred safeguards and exceptions
 
 - No monthly or daily budget; each main agent run has a 5000-AI-credit cap.
-- No paid run or live-loop verification during this bootstrap.
+- Staged tests passed; live assignment and the full issue-to-PR loop remain
+  unverified.
 - No release pin: there is no released CLI. `target_version` is not an install pin.
 - No automated review. Copilot will run review with a different model from build.
 - No enforceable agent-author/path gate yet. CODEOWNERS and risk paths document

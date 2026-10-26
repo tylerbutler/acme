@@ -76,15 +76,18 @@ Do not claim those checks exist yet.
 Copilot is the configured engine for every stage.
 Review is deferred; its model must differ from the builder's model.
 Agent workflows are disabled and also gated by repository variables.
-Safe outputs are staged; the agent itself has read-only permissions.
+Intake safe outputs remain staged. Build-cloud assignment is live when its
+workflow and both variable gates are enabled. The agent job stays read-only.
 Intake cannot apply `ready-for-agent` or assign a builder.
-Do not remove staging or enable either workflow without owner approval.
+Do not remove intake staging, enable either workflow or open the variable gates
+without explicit owner approval.
 Each workflow's main agent has a 5000-AI-credit limit, by owner decision.
 No monthly or daily budget is enforced.
 Staging does not make a run free.
-`GH_PAT` is configured for inference and assignment; its access is unverified.
+`GH_PAT` is configured for inference and assignment. Inference and staged
+assignment passed; live assignment permissions remain unverified.
 Do not read its value, expose it, or reuse local credentials.
-Do not start a paid test run.
+Do not start a paid test run without explicit owner approval.
 
 ## Engineering rules
 
@@ -102,5 +105,5 @@ Do not add release, holdout, ops or local-orchestrator automation in M0.
 
 Run `just check` and the checks required by the changed spec.
 Report missing credentials and unverified acceptance checks explicitly.
-Do not mark M0 complete until the owner approves a live loop test.
+Do not mark M0 complete until an owner-approved live loop test passes.
 The first released CLI must be built by hand and pinned by tag, not HEAD.
