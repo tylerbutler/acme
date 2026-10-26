@@ -17,6 +17,18 @@ are label and comment outputs. It cannot apply `ready-for-agent`.
 Build-cloud checks both the original actor and the rerun actor against the
 repository owner. Only the `ready-for-agent` label can trigger assignment.
 
+Before inference, a read-only approval job checks that linked specs exist on
+the default branch. When an issue identifies a `Spec PR`, the check uses the
+pull-request API's `merged` field, verifies its base repository and branch, and
+confirms that it changes a linked spec. An issue API's `closed` state does not
+prove whether a PR merged. Missing or unreadable evidence blocks the build
+and appears in the approval job summary. Main-only spec links remain supported
+for the existing owner-ready path; this is not automatic coordinator approval.
+Identify a spec PR with `Spec PR: https://github.com/OWNER/REPO/pull/NUMBER`
+or a Markdown link whose label starts with `Spec PR:`. The `Merged`, `Approved`
+and `Proposed` prefixes are also supported. Ordinary prose and unrelated PR
+links are not approval declarations.
+
 The owner approved leaving both agent workflows enabled with live safe outputs
 and both enablement variables set to `true`. Intake handles admin-opened issues.
 Build-cloud still requires the owner to add `ready-for-agent`.
@@ -116,6 +128,23 @@ Enabling workflows does not replay old issue events.
 
 A staged preview alone does not verify live assignment permissions. Set
 `bootstrap.live_loop_verified=true` only after the live loop passes.
+
+### Retry an unfinished build
+
+Closing a builder PR does not remove Copilot from its issue. The assignment
+handler skips issues that already have Copilot assigned. A successful workflow
+can also report a no-op instead of starting a builder; inspect its outputs.
+
+For a same-issue retry, the owner must first confirm that no builder or open
+implementation PR remains active. Close the old PR without merge, remove
+Copilot from the issue, then remove and reapply `ready-for-agent`. Reopening
+the old PR or rerunning the workflow does not clear the existing assignment.
+Approval failures must be resolved before retrying; do not bypass the gate.
+
+When scope needs a split, keep the parent as an unapproved tracker and create
+bounded child issues with their own goal, acceptance scenarios, non-goals and
+approved spec links. Only the owner may apply `ready-for-agent` to each child
+after its prerequisites are satisfied. Parent approval does not transfer.
 
 ### Verified M0 loop
 
