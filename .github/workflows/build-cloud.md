@@ -29,7 +29,7 @@ safe-outputs:
   staged: false
   assign-to-agent:
     name: copilot
-    model: auto
+    model: gpt-6.1-sol
     allowed: [copilot]
     required-labels: [ready-for-agent]
     target: triggering
