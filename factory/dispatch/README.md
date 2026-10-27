@@ -1,8 +1,9 @@
 # Dispatch declaration contract
 
 Declarations use strict TOML and version `1`. Store one file per task under
-`factory/dispatch/`. The coordinator reads declarations as data. It does not
-execute their contents or fetch repository state.
+`factory/dispatch/`. The pure planner reads declarations as data. It does not
+execute their contents or fetch repository state. The read-only adapter below
+supplies verified GitHub observations.
 
 Each declaration binds a repository and issue to a spec path and SHA-256 hash,
 the complete approved issue-body snapshot and its SHA-256 hash, a task kind, and
@@ -230,3 +231,112 @@ owner-label approval policy, and authorizes no live or paid validation.
 Workflow wiring, migration enrollment, rollout limits and activation require
 their separate owner approvals. A different API or provider is not an implicit
 fallback. Human review and merge remain required.
+
+## Read-only GitHub state adapter (#65)
+
+`acme::github_state::GitHubStateReader` implements `claims::GitHubState`.
+`GitHubStateReader::new(GhClient)` reads automatic declarations.
+`GitHubStateReader::manual(GhClient)` also reads manual-only declarations.
+Both use the same claims interface. Neither is wired to a CLI command or an
+installed workflow.
+
+`GhClient` uses authenticated `gh api` reads on `github.com`. REST requests use
+GET. GraphQL requests contain read queries, not mutations. The fakeable
+`GitHubClient` interface exposes only JSON reads, commit-pinned file reads and
+GraphQL queries. It has no assignment, inference or write operation. Observation
+does not execute checkout files, PR code, artifacts, issue text or receipt data.
+Tests replace this API boundary, not the observation logic.
+
+### Supported evidence
+
+| Input | Evidence required by the adapter |
+| --- | --- |
+| Authentication and identity | Successful `/user` and repository metadata reads. The supported approval policy is a user-owned repository, with its human owner as the sole approver. Organization approval policies remain unsupported. |
+| Protected main | The default branch must be `main`, and its branch metadata must report protection. Its full commit SHA must match the request. The adapter checks main again after observation. |
+| Files | Config, declarations, specs and acceptance receipts come from the pinned main revision, not the local checkout. A truncated Git tree blocks. Dispatch files must be regular files. |
+| Owner approval | File history, associated PRs, complete PR file lists, owner merger metadata and merge ancestry must identify one approved file version. The bytes at that merge must match the current file. Config needs this proof too. Direct pushes and ambiguous approvals block. |
+| Current scope | Fresh issue state/body and pinned spec bytes become typed observations. The planner and claims layer check their hashes against the reviewed contract. Read failures cannot become empty content. |
+| Dependencies | Paginated native `blocked_by` references must stay in this repository. A closed issue or successful agent task alone is not accepted implementation. |
+| Accepted implementation | The latest immutable issue `ClosedEvent.closer` must identify an owner-merged PR on main. That merge must follow both the approved declaration and spec revisions. Current editable PR links cannot establish acceptance. Reopened issues, later manual/commit closures and ambiguous evidence do not satisfy prerequisites. |
+| Manual acceptance | A separate owner-merged receipt must follow the implementation merge and bind its issue and merge commit. Receipt fields cannot supply the approver identity. |
+| Owner label | Current `ready-for-agent` presence plus the complete ordered issue-event history must identify the owner as its latest applying actor. Bot or non-owner applications do not authorize the manual route. |
+| Gates | Configured module enablement, staging, positive limits and credit cap; live global/assignment variables; the remote Build-cloud workflow state; and approved secret-reference names from secret metadata. Automatic dispatch also requires the coordinator variable. Secret values are never read. |
+| Capacity | All pages of issues, PRs and both archived/non-archived repository agent tasks. Queued, running, idle and user-waiting tasks count. Open PRs count while waiting for review. A retained Copilot assignee is released only with positive owner-merged closure evidence; active task evidence still counts. |
+
+The variables are `ACME_AGENT_WORKFLOWS_ENABLED`,
+`ACME_CLOUD_ASSIGNMENT_ENABLED` and `ACME_COORDINATOR_ENABLED`. Only the exact
+value `true` enables a gate. Missing or invalid values block. This change does
+not create variables or change their values. Secret metadata proves only that
+a configured name exists; it does not prove that the secret is valid or has
+assignment permissions.
+
+Repository agent tasks use GitHub's preview
+[`GET /agents/repos/{owner}/{repo}/tasks`](https://docs.github.com/en/rest/agent-tasks/agent-tasks).
+The client uses API version `2026-03-10`. This API needs a user-scoped token with
+Agent tasks read access; installation tokens are not supported. Other reads
+need repository content, issues, PRs, Actions variable/secret metadata and
+workflow read access. An inaccessible endpoint blocks; no token value is read
+or changed by this implementation.
+
+Lists use explicit pages of 100. Counts, duplicate pages, missing pagination
+metadata, GraphQL errors and repeated cursors are checked. A pagination bound
+blocks instead of returning partial evidence. An active task without a trusted
+issue binding, an open PR without closing-issue references, or a foreign
+reference also blocks. The reader can conservatively overcount overlapping
+assignment, task and PR evidence; it does not infer a free slot.
+
+### Manual route and acceptance receipt data
+
+Both routes require a complete owner-reviewed contract from protected main.
+The manual route also requires the current owner label, but does not require
+automatic enablement or the coordinator variable. Its snapshots always keep
+automatic dispatch off; only claims' explicit manual route can use them.
+
+Use the same declaration format under `factory/dispatch/manual/` for a
+manual-only snapshot. Automatic observation excludes that directory. An old
+spec merge or an owner label alone cannot manufacture a new contract from
+caller-supplied fields. This change enrolls no tasks or migration declarations.
+The installed legacy owner-label workflow is unchanged.
+
+Supported manual acceptance data lives at
+`factory/dispatch/acceptance/<issue>.json`:
+
+```json
+{
+  "version": 1,
+  "issue": 16,
+  "merge_commit": "cccccccccccccccccccccccccccccccccccccccc"
+}
+```
+
+The format rejects extra fields. The owner must merge the receipt separately,
+after the named implementation merge. The adapter derives `accepted_by` and
+the receipt ID from authenticated merge evidence. Reapproving a changed task
+does not let its old implementation or receipt satisfy the new contract.
+No acceptance file is added by this change.
+
+### Remaining limits and verification
+
+GitHub reads are not an atomic repository snapshot. Main changes detected during
+observation block. Claims perform another observation immediately before
+assignment. Changes after that read and later comments remain the approved
+mutable-context risk; this adapter does not isolate the builder or enforce its
+checkout revision.
+
+The supported APIs do not prove that an old producer can never create more
+work. The adapter therefore returns `resolutions = Evidence::Unknown`.
+Missing list entries, elapsed time, terminal workflows and terminal task states
+never become retry permission. Uncertain attempts remain blocked with
+`RecoveryRequired`; no automatic recovery policy is invented here.
+
+Run the credential-free adapter and claims tests, then the existing checks:
+
+```sh
+cargo test --locked --test github_state --test claims
+just check
+```
+
+The tests cover API failures, pagination, both approval routes, immutable
+completion, required receipts, changed scope and exact request binding through
+fake reconciliation. No live assignment, paid inference, workflow change,
+claim-storage implementation or activation is part of this adapter.
