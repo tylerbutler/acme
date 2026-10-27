@@ -272,7 +272,11 @@ Only a complete fresh readback of the exact entry, bundle and parent acknowledge
 the operation. The adapter does not retry mutations. A committed-then-timeout
 response can be resolved by readback; an unresolved write poisons the producer.
 Owner-approved entry, byte and API-request budgets apply to complete loads and
-appends. Exhaustion never yields partial history. Tool processes also have a
+appends. Acquisition requires five available entries for acquisition, pending,
+arm, outcome and release. Each later write preserves entry capacity for its
+settled path, and the permit check requires outcome and release capacity.
+Request failures or byte/API-budget exhaustion can still retain ownership.
+Exhaustion never yields partial history. Tool processes also have a
 60-second limit and bounded output; the job API client caps each response at
 16 MiB.
 

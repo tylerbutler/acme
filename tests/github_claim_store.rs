@@ -655,6 +655,66 @@ fn actual_store_acquires_verifies_receipts_arms_and_releases_only_after_durable_
     next.release().unwrap();
 }
 
+#[test]
+fn entry_capacity_blocks_acquisition_before_an_attempt_can_strand_ownership() {
+    for (limit, prefix) in [(1, false), (2, false), (3, false), (4, false), (6, true)] {
+        let api = Api::new();
+        if prefix {
+            store(&api, 2).lock(REPO).unwrap().release().unwrap();
+        }
+        let (head, mutations) = {
+            let mut server = api.server.lock().unwrap();
+            let mut configured = policy();
+            configured.max_entries = limit;
+            server.policy = serde_json::to_string(&configured).unwrap();
+            (server.head.clone(), server.mutations.len())
+        };
+        assert!(store(&api, 1).lock(REPO).is_err(), "limit {limit}");
+        let server = api.server.lock().unwrap();
+        assert_eq!(server.head, head);
+        assert_eq!(server.mutations.len(), mutations);
+        drop(server);
+    }
+}
+
+#[test]
+fn exact_entry_capacity_allows_a_durable_outcome_and_release() {
+    for prefix in [false, true] {
+        let api = Api::new();
+        if prefix {
+            store(&api, 2).lock(REPO).unwrap().release().unwrap();
+        }
+        let limit = if prefix { 7 } else { 5 };
+        {
+            let mut server = api.server.lock().unwrap();
+            let mut configured = policy();
+            configured.max_entries = limit;
+            server.policy = serde_json::to_string(&configured).unwrap();
+        }
+        let owner = store(&api, 1);
+        let mut held = owner.lock(REPO).unwrap();
+        let mut receipt = pending(1);
+        held.append(&receipt).unwrap();
+        held.arm_assignment(&receipt.attempt).unwrap();
+        let transport = Transport {
+            api: api.clone(),
+            calls: Mutex::new(0),
+            outcome: AssignmentOutcome::Accepted,
+        };
+        assert_eq!(
+            acme::assignment::handoff(&transport, &request(), &receipt.attempt, &mut held),
+            Ok(AssignmentOutcome::Accepted)
+        );
+        receipt.state = ReceiptState::Accepted;
+        held.append(&receipt).unwrap();
+        held.release().unwrap();
+        assert_eq!(*transport.calls.lock().unwrap(), 1);
+        assert_eq!(api.server.lock().unwrap().entries().len(), limit);
+        assert!(store(&api, 3).lock(REPO).is_err());
+        assert_eq!(api.server.lock().unwrap().mutations.len(), limit);
+    }
+}
+
 fn store_for(api: &Api, id: u64) -> Store {
     store(api, id)
 }

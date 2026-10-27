@@ -92,6 +92,13 @@ pub struct ClaimPolicy {
 }
 
 impl ClaimPolicy {
+    fn require_entries(&self, sequence: usize, required: usize) -> Result<(), String> {
+        if self.max_entries.saturating_sub(sequence) < required {
+            return Err("claim journal lacks entry capacity to settle the session".to_owned());
+        }
+        Ok(())
+    }
+
     fn validate(&self, repository: &str) -> Result<(), String> {
         if self.version != 1
             || self.repository != repository
@@ -916,6 +923,8 @@ impl<C: ClaimClient, A: Attestation> ClaimStore for GitHubClaimStore<C, A> {
         if loaded.owner.is_some() {
             return Err("journal is busy; ownership never expires".to_owned());
         }
+        // Reserve entries for acquisition, pending, arm, outcome, and release.
+        policy.require_entries(loaded.sequence, 5)?;
         let mut session = GitHubClaimSession {
             store: self,
             policy,
@@ -1025,7 +1034,15 @@ impl<C: ClaimClient, A: Attestation> GitHubClaimSession<'_, C, A> {
     }
 
     fn write_exact(&mut self, entry: &Entry, raw: &[u8]) -> Result<String, String> {
-        if entry.sequence > self.policy.max_entries || raw.len() > self.policy.max_entry_bytes {
+        let required = match &entry.operation {
+            Operation::Acquire {} => 5,
+            Operation::Receipt { receipt, .. } if receipt.state == ReceiptState::Pending => 4,
+            Operation::ArmAssignment { .. } => 3,
+            Operation::Receipt { .. } => 2,
+            Operation::Release { .. } => 1,
+        };
+        self.policy.require_entries(self.sequence, required)?;
+        if raw.len() > self.policy.max_entry_bytes {
             return Err("claim entry budget exhausted".to_owned());
         }
         // Count the job-identity request used by the signing helper.
@@ -1151,6 +1168,7 @@ impl<C: ClaimClient, A: Attestation> ClaimSession for GitHubClaimSession<'_, C, 
                     "assignment permit is absent, used, or bound to another attempt".to_owned(),
                 );
             }
+            self.policy.require_entries(loaded.sequence, 2)?;
             self.reserved = true;
             Ok(self.owner.generation.clone())
         })();
