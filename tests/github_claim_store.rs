@@ -253,6 +253,25 @@ impl Api {
     }
 }
 
+fn repository_metadata(fault: Option<&str>) -> Value {
+    let mut repository = json!({"id":42,"full_name":REPO,"default_branch":"main",
+        "private":false,"visibility":"public",
+        "owner":{"id":7,"login":"owner","type":"User"}});
+    match fault {
+        Some("private") => repository["private"] = json!(true),
+        Some("missing_private") => {
+            repository.as_object_mut().unwrap().remove("private");
+        }
+        Some("nonboolean_private") => repository["private"] = json!("false"),
+        Some("private_visibility") => repository["visibility"] = json!("private"),
+        Some("missing_visibility") => {
+            repository.as_object_mut().unwrap().remove("visibility");
+        }
+        _ => {}
+    }
+    repository
+}
+
 impl GitHubClient for Api {
     fn get(&self, endpoint: &str) -> Result<Value, String> {
         let mut server = self.server.lock().unwrap();
@@ -268,22 +287,7 @@ impl GitHubClient for Api {
             return Err("injected missing API evidence".to_owned());
         }
         if path.is_empty() {
-            let mut repository = json!({"id":42,"full_name":REPO,"default_branch":"main",
-                "private":false,"visibility":"public",
-                "owner":{"id":7,"login":"owner","type":"User"}});
-            match server.repository_metadata_fault {
-                Some("private") => repository["private"] = json!(true),
-                Some("missing_private") => {
-                    repository.as_object_mut().unwrap().remove("private");
-                }
-                Some("nonboolean_private") => repository["private"] = json!("false"),
-                Some("private_visibility") => repository["visibility"] = json!("private"),
-                Some("missing_visibility") => {
-                    repository.as_object_mut().unwrap().remove("visibility");
-                }
-                _ => {}
-            }
-            return Ok(repository);
+            return Ok(repository_metadata(server.repository_metadata_fault));
         }
         if path == "/branches/main" {
             return Ok(json!({"name":"main","protected":true,"commit":{"sha":MAIN}}));
@@ -760,6 +764,7 @@ fn private_or_incomplete_visibility_metadata_blocks_before_signing_or_acquisitio
             "{fault}"
         );
         assert!(server.entries().is_empty(), "{fault}");
+        drop(server);
     }
 }
 
