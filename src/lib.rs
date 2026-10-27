@@ -3,6 +3,7 @@ pub mod catalog;
 pub mod claims;
 pub mod config;
 pub mod coordinator;
+pub mod coordinator_event;
 pub mod dispatch;
 pub mod doctor;
 pub mod manifest;
