@@ -1,4 +1,7 @@
-use acme::{FactoryConfig, GitHubError, GitHubTransport, builtin_modules, run_doctor};
+use acme::{
+    FactoryConfig, GitHubError, GitHubMethod, GitHubTransport, builtin_modules,
+    checkout_repository, run_doctor, run_doctor_fix,
+};
 use serde_json::{Value, json};
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -146,7 +149,7 @@ fn reports_each_managed_setting_drift() {
     }
 }
 
-fn label_mutations() -> [(&'static str, Mutation); 2] {
+fn label_mutations() -> [(&'static str, Mutation); 4] {
     [
         (
             "github.label.needs_spec",
@@ -155,6 +158,17 @@ fn label_mutations() -> [(&'static str, Mutation); 2] {
         (
             "github.label.needs_spec",
             Mutation::Label("description", json!("changed")),
+        ),
+        (
+            "github.label.needs_spec",
+            Mutation::Label("name", json!("Needs-Spec")),
+        ),
+        (
+            "github.label.needs_spec",
+            Mutation::Label(
+                "description",
+                json!("needs an explicit spec and acceptance scenarios"),
+            ),
         ),
     ]
 }
@@ -582,4 +596,604 @@ fn temporary_root() -> PathBuf {
         .expect("clock after epoch")
         .as_nanos();
     std::env::temp_dir().join(format!("acme-doctor-{}-{timestamp}", std::process::id()))
+}
+
+struct RepairGitHub {
+    state: RefCell<FakeGitHub>,
+    writes: RefCell<Vec<(GitHubMethod, String, Value)>>,
+    fail_write: Option<usize>,
+    ignore_writes: bool,
+    fail_verification: bool,
+}
+
+impl RepairGitHub {
+    fn matching() -> Self {
+        let mut state = FakeGitHub::matching();
+        let repository = &mut state.responses.get_mut(REPOSITORY).expect("repository")[0];
+        repository["full_name"] = json!("tylerbutler/acme");
+        repository["permissions"] = json!({"admin": true});
+        repository["has_discussions"] = json!(true);
+        state.responses.insert(
+            RULESETS.to_owned(),
+            vec![json!([{"id": 6, "name": "unmanaged"}, {"id": 7, "name": "main"}])],
+        );
+        Self {
+            state: RefCell::new(state),
+            writes: RefCell::new(Vec::new()),
+            fail_write: None,
+            ignore_writes: false,
+            fail_verification: false,
+        }
+    }
+
+    fn fix(&self, root: &Path) -> acme::DoctorReport {
+        let config = FactoryConfig::load(Path::new(ROOT).join("factory/factory.toml"))
+            .expect("fixture config");
+        run_doctor_fix(&config, root, self, Some("tylerbutler/acme"))
+    }
+}
+
+impl GitHubTransport for RepairGitHub {
+    fn get(&self, endpoint: &str) -> Result<Vec<Value>, GitHubError> {
+        if self.fail_verification && !self.writes.borrow().is_empty() {
+            return Err(GitHubError::ApiFailure);
+        }
+        self.state.borrow().get(endpoint)
+    }
+
+    fn write(&self, method: GitHubMethod, endpoint: &str, body: &Value) -> Result<(), GitHubError> {
+        self.writes
+            .borrow_mut()
+            .push((method, endpoint.to_owned(), body.clone()));
+        if self.fail_write == Some(self.writes.borrow().len()) {
+            return Err(GitHubError::PermissionDenied);
+        }
+        if self.ignore_writes {
+            return Ok(());
+        }
+        let mut state = self.state.borrow_mut();
+        match (method, endpoint) {
+            (GitHubMethod::Patch, REPOSITORY) | (GitHubMethod::Put, ACTIONS) => {
+                let object = &mut state.responses.get_mut(endpoint).expect("settings")[0];
+                for (field, value) in body.as_object().expect("settings patch") {
+                    object[field] = value.clone();
+                }
+            }
+            (GitHubMethod::Put, RULESET) => {
+                state
+                    .responses
+                    .insert(RULESET.to_owned(), vec![body.clone()]);
+            }
+            (GitHubMethod::Post, "repos/tylerbutler/acme/rulesets") => {
+                state.responses.insert(
+                    RULESETS.to_owned(),
+                    vec![json!([{"id": 6, "name": "unmanaged"}, {"id": 7, "name": "main"}])],
+                );
+                state
+                    .responses
+                    .insert(RULESET.to_owned(), vec![body.clone()]);
+            }
+            (GitHubMethod::Post, "repos/tylerbutler/acme/labels") => {
+                let labels = state.responses.get_mut(LABELS).expect("labels")[0]
+                    .as_array_mut()
+                    .expect("labels array");
+                if labels.iter().any(|label| {
+                    label["name"]
+                        .as_str()
+                        .expect("label name")
+                        .eq_ignore_ascii_case(body["name"].as_str().expect("new label name"))
+                }) {
+                    return Err(GitHubError::ApiFailure);
+                }
+                labels.push(body.clone());
+            }
+            (GitHubMethod::Patch, endpoint)
+                if endpoint.eq_ignore_ascii_case("repos/tylerbutler/acme/labels/needs-spec") =>
+            {
+                let label = state.responses.get_mut(LABELS).expect("labels")[0]
+                    .as_array_mut()
+                    .expect("labels array")
+                    .iter_mut()
+                    .find(|label| {
+                        label["name"]
+                            .as_str()
+                            .expect("label name")
+                            .eq_ignore_ascii_case("needs-spec")
+                    })
+                    .expect("managed label");
+                for (field, value) in body.as_object().expect("label patch") {
+                    label[if field == "new_name" { "name" } else { field }] = value.clone();
+                }
+            }
+            _ => panic!("unbounded write: {method:?} {endpoint} {body}"),
+        }
+        Ok(())
+    }
+}
+
+#[test]
+fn fix_repairs_each_supported_setting_and_second_fix_is_a_no_op() {
+    for (_, mutation) in label_mutations()
+        .into_iter()
+        .chain(ruleset_mutations())
+        .chain(pull_request_mutations())
+        .chain(status_check_mutations())
+        .chain(repository_mutations())
+    {
+        let github = RepairGitHub::matching();
+        mutation.apply(&mut github.state.borrow_mut());
+
+        let report = github.fix(Path::new(ROOT));
+        assert!(report.is_success(), "{mutation:?}\n{report}");
+        assert_eq!(github.writes.borrow().len(), 1, "{mutation:?}");
+        let report = github.fix(Path::new(ROOT));
+        assert!(report.is_success(), "{report}");
+        assert_eq!(github.writes.borrow().len(), 1, "second fix wrote state");
+    }
+}
+
+#[test]
+fn label_hex_color_case_is_not_drift_and_needs_no_write() {
+    let github = RepairGitHub::matching();
+    Mutation::Label("color", json!("d4c5f9")).apply(&mut github.state.borrow_mut());
+    let config = FactoryConfig::load(Path::new(ROOT).join("factory/factory.toml")).expect("config");
+    let report = run_doctor(&config, Path::new(ROOT), &github);
+    assert!(report.is_success(), "{report}");
+    let report = github.fix(Path::new(ROOT));
+    assert!(report.is_success(), "{report}");
+    assert!(github.writes.borrow().is_empty());
+}
+
+#[test]
+fn fix_preserves_unrelated_resources_and_only_patches_drifted_settings() {
+    let github = RepairGitHub::matching();
+    {
+        let mut state = github.state.borrow_mut();
+        Mutation::Label("color", json!("000000")).apply(&mut state);
+        Mutation::Repository("has_wiki", json!(true)).apply(&mut state);
+        Mutation::Actions("default_workflow_permissions", json!("write")).apply(&mut state);
+    }
+    let before = github.state.borrow().responses.clone();
+    let config = FactoryConfig::load(Path::new(ROOT).join("factory/factory.toml")).expect("config");
+    assert!(!run_doctor(&config, Path::new(ROOT), &github).is_success());
+    assert!(
+        github.writes.borrow().is_empty(),
+        "read-only doctor wrote state"
+    );
+
+    let report = github.fix(Path::new(ROOT));
+    assert!(report.is_success(), "{report}");
+    let writes = github.writes.borrow();
+    assert_eq!(writes.len(), 3);
+    assert!(writes.contains(&(
+        GitHubMethod::Patch,
+        REPOSITORY.to_owned(),
+        json!({"has_wiki": false})
+    )));
+    assert!(writes.contains(&(
+        GitHubMethod::Put,
+        ACTIONS.to_owned(),
+        json!({"default_workflow_permissions": "read"})
+    )));
+    let after = &github.state.borrow().responses;
+    assert_eq!(after[RULESETS], before[RULESETS]);
+    assert_eq!(after[RULESET], before[RULESET]);
+    assert_eq!(after[REPOSITORY][0]["has_discussions"], json!(true));
+    assert_eq!(
+        after[LABELS][0].as_array().expect("labels").last(),
+        before[LABELS][0].as_array().expect("labels").last()
+    );
+}
+
+#[test]
+fn fix_creates_missing_managed_resources_without_deleting_unrelated_resources() {
+    let github = RepairGitHub::matching();
+    {
+        let mut state = github.state.borrow_mut();
+        state.responses.get_mut(LABELS).expect("labels")[0]
+            .as_array_mut()
+            .expect("labels")
+            .retain(|label| label["name"] != "needs-spec");
+        state.responses.insert(
+            RULESETS.to_owned(),
+            vec![json!([{"id": 6, "name": "unmanaged"}])],
+        );
+    }
+    let report = github.fix(Path::new(ROOT));
+    assert!(report.is_success(), "{report}");
+    let writes = github.writes.borrow();
+    assert_eq!(writes.len(), 2);
+    assert!(
+        writes
+            .iter()
+            .all(|(method, _, _)| *method == GitHubMethod::Post)
+    );
+    assert_eq!(
+        github.state.borrow().responses[RULESETS][0][0],
+        json!({"id": 6, "name": "unmanaged"})
+    );
+}
+
+#[test]
+fn fix_validates_the_whole_plan_before_any_write() {
+    for (endpoint, response) in [
+        (
+            REPOSITORY,
+            json!({"full_name": "other/repo", "permissions": {"admin": true}}),
+        ),
+        (
+            REPOSITORY,
+            json!({"full_name": "tylerbutler/acme", "permissions": {"admin": false}}),
+        ),
+        (REPOSITORY, json!({"full_name": "tylerbutler/acme"})),
+        (
+            RULESETS,
+            json!([{"id": 7, "name": "main"}, {"id": 8, "name": "main"}]),
+        ),
+        (RULESETS, json!([{"name": "main"}])),
+        (RULESETS, json!({"unexpected": "not an array"})),
+        (ACTIONS, json!({"unexpected": "not settings"})),
+    ] {
+        let github = RepairGitHub::matching();
+        {
+            let mut state = github.state.borrow_mut();
+            Mutation::Label("color", json!("000000")).apply(&mut state);
+            state.responses.insert(endpoint.to_owned(), vec![response]);
+        }
+        let report = github.fix(Path::new(ROOT));
+        assert!(!report.is_success(), "{endpoint}\n{report}");
+        assert!(github.writes.borrow().is_empty(), "{endpoint}\n{report}");
+    }
+}
+
+#[test]
+fn fix_blocks_conflicting_checkout_identity_without_contacting_github() {
+    let github = RepairGitHub::matching();
+    let config = FactoryConfig::load(Path::new(ROOT).join("factory/factory.toml")).expect("config");
+    let report = run_doctor_fix(&config, Path::new(ROOT), &github, Some("other/repo"));
+    assert!(!report.is_success());
+    assert!(report.to_string().contains("repair.plan"));
+    assert!(github.writes.borrow().is_empty());
+    assert!(github.state.borrow().calls.borrow().is_empty());
+}
+
+#[test]
+fn fix_authentication_and_api_failures_never_write() {
+    for error in [
+        GitHubError::AuthenticationRequired,
+        GitHubError::PermissionDenied,
+        GitHubError::ApiFailure,
+    ] {
+        let github = RepairGitHub::matching();
+        github.state.borrow_mut().error = Some(error);
+        let report = github.fix(Path::new(ROOT));
+        assert!(!report.is_success(), "{report}");
+        assert!(github.writes.borrow().is_empty());
+    }
+}
+
+#[test]
+fn fix_reports_partial_application_and_rechecks_after_write_failure() {
+    let mut github = RepairGitHub::matching();
+    github.fail_write = Some(2);
+    {
+        let mut state = github.state.borrow_mut();
+        Mutation::Label("color", json!("000000")).apply(&mut state);
+        Mutation::Repository("has_wiki", json!(true)).apply(&mut state);
+        Mutation::Actions("default_workflow_permissions", json!("write")).apply(&mut state);
+    }
+    let report = github.fix(Path::new(ROOT));
+    assert!(!report.is_success(), "{report}");
+    assert_eq!(
+        github.writes.borrow().len(),
+        2,
+        "stop after the first failed write"
+    );
+    let text = report.to_string();
+    assert!(text.contains("repair.apply"));
+    assert!(text.contains("1 of 3"));
+    assert!(text.contains("rollback"));
+    assert!(
+        report
+            .checks
+            .iter()
+            .any(|check| { check.id == "github.label.needs_spec" && check.passed })
+    );
+    assert!(report.checks.iter().any(|check| {
+        check.id == "github.actions-defaults.default_workflow_permissions" && !check.passed
+    }));
+}
+
+#[test]
+fn fix_does_not_trust_successful_writes_without_verification() {
+    let mut github = RepairGitHub::matching();
+    github.ignore_writes = true;
+    Mutation::Label("color", json!("000000")).apply(&mut github.state.borrow_mut());
+    let report = github.fix(Path::new(ROOT));
+    assert!(!report.is_success(), "{report}");
+    assert!(
+        report
+            .checks
+            .iter()
+            .any(|check| { check.id == "github.label.needs_spec" && !check.passed })
+    );
+}
+
+#[test]
+fn fix_leaves_local_drift_manual() {
+    let root = temporary_root();
+    copy_assets(&root);
+    let form = root.join(".github/ISSUE_TEMPLATE/idea.yml");
+    fs::write(&form, "name: incomplete\n").expect("change form");
+    let github = RepairGitHub::matching();
+    Mutation::Label("color", json!("000000")).apply(&mut github.state.borrow_mut());
+    let report = github.fix(&root);
+    assert!(!report.is_success(), "{report}");
+    assert!(
+        report
+            .checks
+            .iter()
+            .any(|check| { check.id == "github.label.needs_spec" && check.passed })
+    );
+    assert_eq!(
+        fs::read_to_string(form).expect("read form"),
+        "name: incomplete\n"
+    );
+    assert!(report.to_string().contains("doctor does not rewrite files"));
+    fs::remove_dir_all(root).expect("remove temporary tree");
+}
+
+#[test]
+fn fix_handles_pagination_and_blocks_inherited_or_ambiguous_resources() {
+    let github = RepairGitHub::matching();
+    {
+        let mut state = github.state.borrow_mut();
+        let labels = state.responses.get_mut(LABELS).expect("labels");
+        let second_page = labels[0].as_array_mut().expect("labels").split_off(3);
+        labels.push(json!(second_page));
+        state.responses.insert(
+            RULESETS.to_owned(),
+            vec![
+                json!([{"id": 6, "name": "unmanaged"}]),
+                json!([{"id": 7, "name": "main"}]),
+            ],
+        );
+        Mutation::Label("color", json!("000000")).apply(&mut state);
+    }
+    let report = github.fix(Path::new(ROOT));
+    assert!(report.is_success(), "{report}");
+    for (endpoint, response) in [
+        (
+            RULESETS,
+            json!([{"id": 7, "name": "main", "source_type": "Organization"}]),
+        ),
+        (
+            LABELS,
+            json!([
+                {"name": "needs-spec", "color": "000000", "description": "one"},
+                {"name": "needs-spec", "color": "ffffff", "description": "two"}
+            ]),
+        ),
+        (LABELS, json!([{"color": "000000"}])),
+        (RULESET, json!(null)),
+    ] {
+        let github = RepairGitHub::matching();
+        {
+            let mut state = github.state.borrow_mut();
+            Mutation::Repository("has_wiki", json!(true)).apply(&mut state);
+            state.responses.insert(endpoint.to_owned(), vec![response]);
+        }
+        let report = github.fix(Path::new(ROOT));
+        assert!(!report.is_success(), "{report}");
+        assert!(github.writes.borrow().is_empty(), "{report}");
+    }
+}
+
+#[test]
+fn fix_fails_if_fresh_verification_cannot_read_the_remote_state() {
+    let mut github = RepairGitHub::matching();
+    github.fail_verification = true;
+    Mutation::Label("color", json!("000000")).apply(&mut github.state.borrow_mut());
+    let report = github.fix(Path::new(ROOT));
+    assert!(!report.is_success(), "{report}");
+    assert!(report.to_string().contains("GitHub API request failed"));
+    assert_eq!(github.writes.borrow().len(), 1);
+}
+
+fn git(root: &Path, args: &[&str]) {
+    let output = std::process::Command::new("git")
+        .arg("-C")
+        .arg(root)
+        .args(args)
+        .output()
+        .expect("git should start");
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+#[test]
+fn checkout_identity_accepts_github_origins_and_rejects_unknown_or_conflicting_origins() {
+    let root = temporary_root();
+    fs::create_dir_all(&root).expect("temporary root");
+    assert_eq!(checkout_repository(&root).expect("no checkout"), None);
+    git(&root, &["init", "--quiet"]);
+    assert!(
+        checkout_repository(&root).is_err(),
+        "missing origin must fail closed"
+    );
+    git(
+        &root,
+        &[
+            "remote",
+            "add",
+            "origin",
+            "https://github.com/tylerbutler/acme.git",
+        ],
+    );
+    for url in [
+        "https://github.com/tylerbutler/acme.git",
+        "git@github.com:tylerbutler/acme.git",
+        "ssh://git@github.com/tylerbutler/acme",
+    ] {
+        git(&root, &["remote", "set-url", "origin", url]);
+        assert_eq!(
+            checkout_repository(&root)
+                .expect("GitHub identity")
+                .as_deref(),
+            Some("tylerbutler/acme")
+        );
+    }
+    for url in [
+        "https://other.example/tylerbutler/acme.git",
+        "https://github.com/tylerbutler/acme/extra",
+        "https://github.com/tylerbutler/acme?query=true",
+        "https://github.com.evil.example/tylerbutler/acme",
+    ] {
+        git(&root, &["remote", "set-url", "origin", url]);
+        assert!(checkout_repository(&root).is_err(), "{url}");
+    }
+    git(
+        &root,
+        &[
+            "remote",
+            "set-url",
+            "origin",
+            "https://github.com/tylerbutler/acme",
+        ],
+    );
+    git(
+        &root,
+        &[
+            "remote",
+            "set-url",
+            "--add",
+            "origin",
+            "https://github.com/other/repo",
+        ],
+    );
+    assert!(checkout_repository(&root).is_err());
+    fs::remove_dir_all(root).expect("remove temporary root");
+}
+
+#[cfg(unix)]
+fn install_fake_gh(root: &Path) {
+    use std::os::unix::fs::PermissionsExt;
+
+    let gh = root.join("gh");
+    fs::write(
+        &gh,
+        r#"#!/usr/bin/env python3
+import json
+import os
+import sys
+
+args = sys.argv[1:]
+assert args[0] == "api"
+assert args[args.index("--hostname") + 1] == "github.com"
+endpoint = args[-1]
+path = os.environ["ACME_TEST_STATE"]
+with open(path) as source:
+    state = json.load(source)
+if "--method" not in args:
+    assert "--paginate" in args and "--slurp" in args
+    print(json.dumps(state[endpoint]))
+else:
+    assert args[args.index("--method") + 1] == "PATCH"
+    assert args[args.index("--input") + 1] == "-"
+    assert endpoint == "repos/tylerbutler/acme/labels/needs-spec"
+    body = json.load(sys.stdin)
+    assert body == {"color": "D4C5F9"}
+    for label in state["repos/tylerbutler/acme/labels?per_page=100"][0]:
+        if label["name"] == "needs-spec":
+            label.update(body)
+    with open(path, "w") as target:
+        json.dump(state, target)
+    with open(path + ".writes", "a") as log:
+        log.write(endpoint + "\n")
+"#,
+    )
+    .expect("write fake gh");
+    fs::set_permissions(&gh, fs::Permissions::from_mode(0o755)).expect("fake gh executable");
+}
+
+#[cfg(unix)]
+#[test]
+fn cli_uses_explicit_bounded_writes_and_verifies_with_a_fake_gh_process() {
+    use std::process::Command;
+
+    let root = temporary_root();
+    copy_assets(&root);
+    git(&root, &["init", "--quiet"]);
+    git(
+        &root,
+        &[
+            "remote",
+            "add",
+            "origin",
+            "git@github.com:tylerbutler/acme.git",
+        ],
+    );
+    let github = RepairGitHub::matching();
+    Mutation::Label("color", json!("000000")).apply(&mut github.state.borrow_mut());
+    let state_path = root.join("state.json");
+    fs::write(
+        &state_path,
+        serde_json::to_vec(&github.state.borrow().responses).expect("state JSON"),
+    )
+    .expect("write fake state");
+    install_fake_gh(&root);
+    let paths = std::env::join_paths(std::iter::once(root.clone()).chain(std::env::split_paths(
+        &std::env::var_os("PATH").expect("PATH"),
+    )))
+    .expect("test PATH");
+    let invoke = |fix: bool| {
+        let mut command = Command::new(env!("CARGO_BIN_EXE_acme"));
+        command
+            .current_dir(&root)
+            .env("PATH", &paths)
+            .env("ACME_TEST_STATE", &state_path)
+            .args(["doctor", "--config"])
+            .arg(Path::new(ROOT).join("factory/factory.toml"));
+        if fix {
+            command.arg("--fix");
+        }
+        command.output().expect("acme should start")
+    };
+    let output = invoke(false);
+    assert!(!output.status.success());
+    assert!(!root.join("state.json.writes").exists());
+    for _ in 0..2 {
+        let output = invoke(true);
+        assert!(
+            output.status.success(),
+            "{}\n{}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert!(String::from_utf8_lossy(&output.stdout).contains("PASS github.label.needs_spec"));
+    }
+    assert_eq!(
+        fs::read_to_string(root.join("state.json.writes"))
+            .expect("write log")
+            .lines()
+            .count(),
+        1
+    );
+
+    git(
+        &root,
+        &[
+            "remote",
+            "set-url",
+            "origin",
+            "https://github.com/other/repo",
+        ],
+    );
+    let output = invoke(true);
+    assert!(!output.status.success());
+    assert!(String::from_utf8_lossy(&output.stdout).contains("conflicts with the checkout"));
+    fs::remove_dir_all(root).expect("remove temporary root");
 }

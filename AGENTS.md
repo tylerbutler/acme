@@ -12,7 +12,8 @@ The CLI renders only approved config.
 The factory is hand-built. `doctor` is implemented as a read-only check of
 supported local assets and GitHub settings. It reads and validates the M1
 config before checks. `init`, `render` and `sync` are not implemented, and the
-binary must not report success for them. `doctor --fix` is not implemented.
+binary must not report success for them. Explicit `doctor --fix` repairs
+supported remote drift after plan validation and then runs fresh checks.
 Read `factory/brief.md` and `docs/specs/0001-bootstrap.md` first.
 Read `docs/specs/0002-m1-config-contract.md` before M1 config, schema or manifest
 work. Implement only after the spec is merged and the owner approves the issue.
@@ -49,9 +50,10 @@ just workflows
 ```
 
 `doctor` checks local module assets and configured GitHub repository settings.
-It requires an authenticated `gh` CLI and makes read-only API calls. It does not
+It requires an authenticated `gh` CLI and defaults to read-only API calls. It does not
 verify token scopes, enforce path-author policy or model separation, or repair
-drift. Do not pass `--fix`.
+local drift. Do not pass `--fix` in an implementation run or CI. Live repairs
+require separate owner approval and authenticated repository-administration access.
 
 `just workflows` needs gh-aw v0.93.5 and actionlint.
 It compiles workflows; it does not run an agent.

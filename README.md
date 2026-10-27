@@ -20,9 +20,28 @@ cargo run -- doctor --config path/to/factory.toml
 
 Rust is pinned in `rust-toolchain.toml`. Python 3 is used for the bootstrap
 and commit-config scripts. `just check` runs formatting, Clippy, config checks,
-and tests. Doctor reports drift and repair guidance but does not change local
-files or GitHub settings. It does not verify token scopes, enforce path-author
-policy, or enforce model separation. `doctor --fix` is not implemented.
+and tests. Doctor reports drift and repair guidance. It does not change local
+files. Default execution does not change GitHub settings. It does not verify
+token scopes, enforce path-author policy, or enforce model separation.
+
+With explicit owner approval, `cargo run -- doctor --fix` repairs supported
+managed labels, the named `main` ruleset, repository merge settings and Actions
+defaults. `--config PATH` also works with `--fix`. Fix requires authenticated
+repository-administration access. All requests use the configured repository.
+A conflicting checkout origin or API repository identity blocks the plan.
+An existing checkout needs an identifiable `github.com` origin.
+
+Doctor validates the complete plan before writes, then reads fresh state and
+runs the same checks. A second fix makes no writes if supported settings match.
+A failed write stops further writes. Partial changes and failed verification
+remain failures; doctor does not promise rollback. Local drift needs a reviewed
+edit until M3. Unrelated labels and rulesets remain unchanged. Duplicate managed
+rulesets need manual resolution.
+
+Fix does not provision secrets or change workflow enablement, variable gates,
+staging, budgets, assignments or issue state. It never runs the bootstrap script.
+See the [owner-only M2 acceptance procedure](docs/bootstrap.md#owner-only-m2-acceptance).
+Implementation and fake-state tests do not establish the live M2 exit check.
 
 ### Agent comment style
 

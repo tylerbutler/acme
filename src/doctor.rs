@@ -4,8 +4,38 @@ use std::collections::BTreeMap;
 use std::fs;
 use std::path::Path;
 
+mod repair;
+pub use repair::{checkout_repository, run_doctor_fix};
+
 pub trait GitHubTransport {
     fn get(&self, endpoint: &str) -> Result<Vec<Value>, GitHubError>;
+
+    fn write(
+        &self,
+        _method: GitHubMethod,
+        _endpoint: &str,
+        _body: &Value,
+    ) -> Result<(), GitHubError> {
+        Err(GitHubError::PermissionDenied)
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum GitHubMethod {
+    Post,
+    Patch,
+    Put,
+}
+
+impl GitHubMethod {
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Post => "POST",
+            Self::Patch => "PATCH",
+            Self::Put => "PUT",
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -393,7 +423,11 @@ fn check_labels(github: &impl GitHubTransport, prefix: &str, report: &mut Doctor
         let name = label["name"].as_str().unwrap_or("unknown");
         let matches: Vec<_> = observed
             .iter()
-            .filter(|candidate| candidate["name"].as_str() == Some(name))
+            .filter(|candidate| {
+                candidate["name"]
+                    .as_str()
+                    .is_some_and(|candidate| candidate.eq_ignore_ascii_case(name))
+            })
             .collect();
         let expected_fields = json!({
             "name": name,
@@ -408,9 +442,11 @@ fn check_labels(github: &impl GitHubTransport, prefix: &str, report: &mut Doctor
             })
         });
         let valid = matches.len() == 1
-            && actual_fields
-                .as_ref()
-                .is_some_and(|actual| semantic_equal(&expected_fields, actual));
+            && actual_fields.as_ref().is_some_and(|actual| {
+                actual["name"] == expected_fields["name"]
+                    && actual["description"] == expected_fields["description"]
+                    && semantic_equal(&expected_fields["color"], &actual["color"])
+            });
         push(
             report,
             &format!("github.label.{}", stable_path(name)),

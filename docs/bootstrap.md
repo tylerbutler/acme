@@ -4,7 +4,8 @@
 
 This is the M0 hand-built factory. Files in `.github/`, `AGENTS.md` and the
 approved draft in `factory/factory.toml` are future renderer fixtures. There is
-no renderer or doctor yet. Keep config and fixtures consistent by hand.
+no renderer yet. Doctor checks supported local assets and remote settings.
+Keep local config and fixtures consistent by hand.
 
 The `main` ruleset requires a PR, the GitHub Actions `CI` check, an up-to-date
 branch and resolved review threads. It has zero required approvals and no
@@ -52,7 +53,7 @@ Do not edit lock files by hand. See the upstream
 [gh-aw docs](https://github.github.com/gh-aw/) for the current authentication
 requirements. The compiler pins the generated action references.
 
-## Apply remote settings
+## Initial bootstrap settings
 
 After the initial push, authenticate `gh` as the repository owner and run:
 
@@ -68,7 +69,42 @@ Use the continuous-operation commands below to restore the approved operating
 state afterward.
 
 `.github/labels.yml` is JSON-compatible YAML so the temporary Python tool needs
-no YAML dependency. The Rust doctor replaces this tool in M2.
+no YAML dependency. Use explicit doctor repairs for supported setting drift.
+Do not run the bootstrap tool as a repair: it disables live workflows and gates.
+
+## Owner-only M2 acceptance
+
+The M2 live exit check is not yet recorded. Implementation tests use fake remote
+state only. They do not authorize a live check, deliberate drift or a repair.
+After merge, the owner must approve each live step separately:
+
+1. Approve a read-only `cargo run -- doctor` on `tylerbutler/acme`.
+2. Record the command, revision, configured repository, exit status and report.
+   Resolve local drift through reviewed edits, not through remote repairs.
+3. Approve one controlled change to a managed label. Save its original fields,
+   change only that label, and run read-only doctor to record the named failure.
+4. Review all reported drift and approve `cargo run -- doctor --fix` explicitly.
+   The command repairs all supported drift, not only the test label. It requires
+   an authenticated repository administrator and matching repository identity.
+5. Record the repair report and final read-only report. Verify that unrelated
+   resources remain intact. Record a second fix with no writes if approved.
+6. Link the evidence before claiming that the M2 live exit check passed.
+
+Doctor validates a complete plan before any writes. It blocks conflicting
+checkout identity, missing admin access, unreadable state and duplicate managed
+rulesets. It repairs only managed labels, the named `main` ruleset, documented
+repository settings and Actions defaults. It never writes local source files.
+Inherited rulesets require action by their owner.
+
+After writes, doctor reads fresh state and runs the same checks. It stops on the
+first write failure and reports partial application. An API error can occur
+after a change took effect. There is no transaction or rollback. Review the
+fresh report before approving a retry; remaining drift or unreadable state
+still exits unsuccessfully.
+
+Do not change secrets, workflow enablement, variable gates, staging, budgets,
+assignments or issue state for this test. Never invoke `just bootstrap-github`
+from doctor or as an acceptance repair.
 
 ## Credentials and explicit owner actions
 
