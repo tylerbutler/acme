@@ -193,7 +193,8 @@ impl Default for FakeAssignment {
         Self {
             capabilities: AssignmentCapabilities {
                 exact_target: Capability::Supported,
-                immutable_task: Capability::Supported,
+                approved_snapshot: Capability::Supported,
+                immutable_task: Capability::Unsupported,
             },
             calls: Mutex::default(),
             outcome: AssignmentOutcome::Accepted,
@@ -244,6 +245,15 @@ fn persists_bound_intent_before_assignment_and_rejects_duplicate_routes() {
         receipts[0].receipt.attempt.binding.contract_sha256,
         request.contract_sha256()
     );
+    assert_eq!(
+        receipts[0].receipt.attempt.binding.approved_contract,
+        contract(17)
+    );
+    let encoded = serde_json::to_string(&receipts[0].receipt).unwrap();
+    assert_eq!(
+        serde_json::from_str::<Receipt>(&encoded).unwrap(),
+        receipts[0].receipt
+    );
     assert_eq!(receipts[0].receipt.attempt.run.run_id, 100);
     assert_eq!(receipts[0].receipt.attempt.number, 1);
     for route in [Route::Manual, Route::Automatic] {
@@ -256,12 +266,24 @@ fn persists_bound_intent_before_assignment_and_rejects_duplicate_routes() {
 }
 
 #[test]
-fn pinned_and_unknown_handoffs_do_not_claim_or_assign() {
+fn missing_unknown_and_unsupported_handoffs_do_not_claim_or_assign() {
     for capabilities in [
-        AssignmentCapabilities::gh_aw_0_93_5(),
+        AssignmentCapabilities::default(),
         AssignmentCapabilities {
             exact_target: Capability::Unknown,
-            immutable_task: Capability::Supported,
+            ..AssignmentCapabilities::gh_aw_0_93_5()
+        },
+        AssignmentCapabilities {
+            exact_target: Capability::Unsupported,
+            ..AssignmentCapabilities::gh_aw_0_93_5()
+        },
+        AssignmentCapabilities {
+            approved_snapshot: Capability::Unknown,
+            ..AssignmentCapabilities::gh_aw_0_93_5()
+        },
+        AssignmentCapabilities {
+            approved_snapshot: Capability::Unsupported,
+            ..AssignmentCapabilities::gh_aw_0_93_5()
         },
     ] {
         let store = FakeStore::default();
@@ -339,6 +361,28 @@ fn final_revalidation_blocks_scope_authority_and_switch_changes() {
     closed.observations[0].issue_state = Evidence::Known(IssueState::Closed);
     let mut stopped = snapshot(17);
     stopped.kill_switches.assignment = Evidence::Known(true);
+    let mut changed_spec = snapshot(17);
+    changed_spec.observations[0].current_spec = Evidence::Known("Changed spec".to_owned());
+    let mut unreadable_spec = snapshot(17);
+    unreadable_spec.observations[0].current_spec = Evidence::Error;
+    let mut unknown_body = snapshot(17);
+    unknown_body.observations[0].current_issue_body = Evidence::Unknown;
+    let mut changed_approval = snapshot(17);
+    if let Evidence::Known(Some(approval)) = &mut changed_approval.observations[0].approval {
+        approval.merged_by = "agent".to_owned();
+    }
+    let mut unprotected = snapshot(17);
+    if let Evidence::Known(Some(approval)) = &mut unprotected.observations[0].approval {
+        approval.present_on_protected_main = false;
+    }
+    let mut disabled = snapshot(17);
+    disabled.config.automatic_dispatch = false;
+    let mut full = snapshot(17);
+    full.work = Evidence::Known(vec![ActualWork {
+        issue: 18,
+        active_copilot: 0,
+        open_implementation_prs: 2,
+    }]);
     for changed in [
         changed_body,
         changed_revision,
@@ -346,6 +390,13 @@ fn final_revalidation_blocks_scope_authority_and_switch_changes() {
         changed_target,
         closed,
         stopped,
+        changed_spec,
+        unreadable_spec,
+        unknown_body,
+        changed_approval,
+        unprotected,
+        disabled,
+        full,
     ] {
         let store = FakeStore::default();
         let github = FakeGitHub::new(changed);
@@ -376,6 +427,314 @@ fn final_revalidation_blocks_scope_authority_and_switch_changes() {
             ReceiptState::NotAssigned
         );
     }
+}
+
+#[test]
+fn failed_final_read_records_no_assignment_and_keeps_the_attempt() {
+    let store = FakeStore::default();
+    let github = FakeGitHub::new(snapshot(17));
+    github
+        .snapshots
+        .lock()
+        .unwrap()
+        .extend([Ok(snapshot(17)), Err("final read failed".to_owned())]);
+    let assignment = FakeAssignment::default();
+    assert_eq!(
+        reconcile(
+            &store,
+            &github,
+            &assignment,
+            &context(100),
+            &request(17),
+            Route::Automatic
+        ),
+        ReconcileResult::Blocked(ClaimBlock::GitHub("final read failed".to_owned()))
+    );
+    let journal = store.0.lock().unwrap();
+    assert_eq!(journal.receipts.len(), 2);
+    assert_eq!(journal.receipts[1].receipt.state, ReceiptState::NotAssigned);
+    drop(journal);
+    assert!(assignment.calls.lock().unwrap().is_empty());
+}
+
+#[test]
+fn final_revalidation_blocks_a_different_valid_approval_receipt() {
+    let mut changed = snapshot(17);
+    if let Evidence::Known(Some(approval)) = &mut changed.observations[0].approval {
+        approval.spec_pull_request = 45;
+    }
+    let github = FakeGitHub::new(changed);
+    github.snapshots.lock().unwrap().push_back(Ok(snapshot(17)));
+    let store = FakeStore::default();
+    let assignment = FakeAssignment::default();
+    assert_eq!(
+        reconcile(
+            &store,
+            &github,
+            &assignment,
+            &context(100),
+            &request(17),
+            Route::Automatic
+        ),
+        ReconcileResult::Blocked(ClaimBlock::SnapshotMismatch)
+    );
+    assert!(assignment.calls.lock().unwrap().is_empty());
+}
+
+#[test]
+fn constructed_requests_do_not_authorize_substituted_bindings() {
+    let original = contract(17);
+    let changed_body = original
+        .replace(BODY, "Unapproved scope")
+        .replace(&content_sha256(BODY), &content_sha256("Unapproved scope"));
+    for (contract, revision) in [
+        (
+            original.replace("proof/acme", "other/repo"),
+            REVISION.to_owned(),
+        ),
+        (
+            original.replace("issue = 17", "issue = 18"),
+            REVISION.to_owned(),
+        ),
+        (changed_body, REVISION.to_owned()),
+        (format!("{original}\n"), REVISION.to_owned()),
+        (original.clone(), "b".repeat(40)),
+    ] {
+        let store = FakeStore::default();
+        let assignment = FakeAssignment::default();
+        let request = AssignmentRequest::from_approved_snapshot(&contract, &revision).unwrap();
+        let mut run = context(100);
+        run.run.workflow_revision = revision;
+        assert!(matches!(
+            reconcile(
+                &store,
+                &FakeGitHub::new(snapshot(17)),
+                &assignment,
+                &run,
+                &request,
+                Route::Automatic
+            ),
+            ReconcileResult::Blocked(_)
+        ));
+        assert!(store.0.lock().unwrap().receipts.is_empty());
+        assert!(assignment.calls.lock().unwrap().is_empty());
+    }
+}
+
+#[test]
+fn later_hash_changes_block_reconciliation_even_with_existing_work() {
+    for (spec, body, expected) in [
+        ("Changed spec", BODY, acme::ReasonCode::SpecChanged),
+        (SPEC, "Changed body", acme::ReasonCode::IssueBodyChanged),
+    ] {
+        let store = FakeStore::default();
+        let assignment = FakeAssignment::default();
+        assert_eq!(
+            reconcile(
+                &store,
+                &FakeGitHub::new(snapshot(17)),
+                &assignment,
+                &context(100),
+                &request(17),
+                Route::Automatic
+            ),
+            ReconcileResult::Assigned
+        );
+        let mut current = snapshot(17);
+        current.observations[0].current_spec = Evidence::Known(spec.to_owned());
+        current.observations[0].current_issue_body = Evidence::Known(body.to_owned());
+        current.work = Evidence::Known(vec![ActualWork {
+            issue: 17,
+            active_copilot: 1,
+            open_implementation_prs: 0,
+        }]);
+        for route in [Route::Automatic, Route::Manual] {
+            assert_eq!(
+                reconcile(
+                    &store,
+                    &FakeGitHub::new(current.clone()),
+                    &assignment,
+                    &context(101),
+                    &request(17),
+                    route
+                ),
+                ReconcileResult::Blocked(ClaimBlock::Ineligible(expected))
+            );
+        }
+        assert_eq!(assignment.calls.lock().unwrap().len(), 1);
+    }
+}
+
+#[test]
+fn verified_completion_releases_capacity_despite_later_scope_drift() {
+    for (spec, body) in [("Changed spec", BODY), (SPEC, "Changed body")] {
+        let store = FakeStore::default();
+        let assignment = FakeAssignment::default();
+        assert_eq!(
+            reconcile(
+                &store,
+                &FakeGitHub::new(snapshot(17)),
+                &assignment,
+                &context(100),
+                &request(17),
+                Route::Automatic
+            ),
+            ReconcileResult::Assigned
+        );
+        let attempt = store.0.lock().unwrap().receipts[0].receipt.attempt.clone();
+        let mut completed = snapshot(17);
+        completed.observations[0].current_spec = Evidence::Known(spec.to_owned());
+        completed.observations[0].current_issue_body = Evidence::Known(body.to_owned());
+        completed.resolutions = Evidence::Known(vec![AttemptResolution {
+            attempt,
+            outcome: RecoveryOutcome::Merged,
+        }]);
+        assert_eq!(
+            reconcile(
+                &store,
+                &FakeGitHub::new(completed.clone()),
+                &assignment,
+                &context(101),
+                &request(17),
+                Route::Automatic
+            ),
+            ReconcileResult::Complete
+        );
+        assert_eq!(
+            store
+                .0
+                .lock()
+                .unwrap()
+                .receipts
+                .last()
+                .unwrap()
+                .receipt
+                .state,
+            ReceiptState::Completed
+        );
+        assert_eq!(assignment.calls.lock().unwrap().len(), 1);
+        let mut next = snapshot(18);
+        next.config.max_active_tasks = 1;
+        assert_eq!(
+            reconcile(
+                &store,
+                &FakeGitHub::new(next),
+                &assignment,
+                &context(102),
+                &request(18),
+                Route::Automatic
+            ),
+            ReconcileResult::Assigned
+        );
+        assert_eq!(
+            reconcile(
+                &store,
+                &FakeGitHub::new(completed),
+                &assignment,
+                &context(103),
+                &request(17),
+                Route::Manual
+            ),
+            ReconcileResult::Complete
+        );
+        assert_eq!(assignment.calls.lock().unwrap().len(), 2);
+    }
+}
+
+#[test]
+fn body_edit_after_final_read_does_not_replace_the_outgoing_snapshot() {
+    struct EditAfterFinalRead {
+        state: Mutex<(GitHubSnapshot, usize)>,
+    }
+
+    impl GitHubState for EditAfterFinalRead {
+        fn observe(&self, _request: &AssignmentRequest) -> Result<GitHubSnapshot, String> {
+            let mut state = self.state.lock().unwrap();
+            let observed = state.0.clone();
+            state.1 += 1;
+            if state.1 == 2 {
+                state.0.observations[0].current_issue_body =
+                    Evidence::Known("Edit after the final read".to_owned());
+            }
+            drop(state);
+            Ok(observed)
+        }
+    }
+
+    let github = EditAfterFinalRead {
+        state: Mutex::new((snapshot(17), 0)),
+    };
+    let store = FakeStore::default();
+    let assignment = FakeAssignment::default();
+    let approved = request(17);
+    assert_eq!(
+        reconcile(
+            &store,
+            &github,
+            &assignment,
+            &context(100),
+            &approved,
+            Route::Automatic
+        ),
+        ReconcileResult::Assigned
+    );
+    let calls = assignment.calls.lock().unwrap();
+    assert_eq!(calls.len(), 1);
+    let config = serde_json::to_value(calls[0].gh_aw_config()).unwrap();
+    let instructions = config["custom-instructions"].as_str().unwrap();
+    let binding: serde_json::Value =
+        serde_json::from_str(instructions.split_once('\n').unwrap().1).unwrap();
+    assert_eq!(binding["approved_contract"], contract(17));
+    assert_eq!(config["target"], 17);
+    drop(calls);
+    assert_eq!(
+        reconcile(
+            &store,
+            &github,
+            &assignment,
+            &context(101),
+            &approved,
+            Route::Manual
+        ),
+        ReconcileResult::Blocked(ClaimBlock::Ineligible(acme::ReasonCode::IssueBodyChanged))
+    );
+    assert_eq!(assignment.calls.lock().unwrap().len(), 1);
+}
+
+#[test]
+fn receipt_snapshot_substitution_invalidates_trusted_history() {
+    let store = FakeStore::default();
+    let github = FakeGitHub::new(snapshot(17));
+    let assignment = FakeAssignment::default();
+    assert_eq!(
+        reconcile(
+            &store,
+            &github,
+            &assignment,
+            &context(100),
+            &request(17),
+            Route::Automatic
+        ),
+        ReconcileResult::Assigned
+    );
+    store.0.lock().unwrap().receipts[0]
+        .receipt
+        .attempt
+        .binding
+        .approved_contract
+        .push('\n');
+    assert_eq!(
+        reconcile(
+            &store,
+            &github,
+            &assignment,
+            &context(101),
+            &request(17),
+            Route::Automatic
+        ),
+        ReconcileResult::Blocked(ClaimBlock::InvalidHistory)
+    );
+    assert_eq!(assignment.calls.lock().unwrap().len(), 1);
 }
 
 #[test]
@@ -585,6 +944,41 @@ fn unknown_outcome_requires_bound_terminal_evidence_and_a_new_run_for_bounded_re
         ReconcileResult::Blocked(ClaimBlock::AttemptsExhausted)
     );
     assert_eq!(assignment.calls.lock().unwrap().len(), 2);
+}
+
+#[test]
+fn uncertain_assignment_is_not_retried_on_either_route_without_recovery() {
+    let store = FakeStore::default();
+    let assignment = FakeAssignment {
+        outcome: AssignmentOutcome::Unknown,
+        ..FakeAssignment::default()
+    };
+    let github = FakeGitHub::new(snapshot(17));
+    assert_eq!(
+        reconcile(
+            &store,
+            &github,
+            &assignment,
+            &context(100),
+            &request(17),
+            Route::Automatic
+        ),
+        ReconcileResult::Uncertain
+    );
+    for route in [Route::Automatic, Route::Manual] {
+        assert_eq!(
+            reconcile(
+                &store,
+                &github,
+                &assignment,
+                &context(101),
+                &request(17),
+                route
+            ),
+            ReconcileResult::Blocked(ClaimBlock::RecoveryRequired)
+        );
+    }
+    assert_eq!(assignment.calls.lock().unwrap().len(), 1);
 }
 
 #[test]
