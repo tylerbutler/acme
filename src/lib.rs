@@ -6,6 +6,7 @@ pub mod coordinator;
 pub mod coordinator_event;
 pub mod dispatch;
 pub mod doctor;
+pub mod github_state;
 pub mod manifest;
 
 pub use catalog::{BuiltinModule, ConfigBinding, ModuleAsset, builtin_modules};
