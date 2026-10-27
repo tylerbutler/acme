@@ -1,7 +1,8 @@
 use acme::assignment::{
-    AssignmentCapabilities, AssignmentOutcome, AssignmentRequest, AssignmentTransport, Capability,
-    handoff,
+    AssignmentCapabilities, AssignmentOutcome, AssignmentPermit, AssignmentRequest,
+    AssignmentTransport, Capability, handoff as guarded_handoff,
 };
+use acme::claims::{AttemptId, ClaimSession, Receipt, RequestBinding, StoredReceipt, WorkflowRun};
 use std::cell::RefCell;
 
 const CONTRACT: &str = include_str!("fixtures/assignment-handoff/task.toml");
@@ -18,10 +19,54 @@ impl AssignmentTransport for FakeAssignment {
         self.capabilities
     }
 
-    fn assign(&self, request: &AssignmentRequest) -> AssignmentOutcome {
-        self.calls.borrow_mut().push(request.clone());
+    fn assign(&self, permit: AssignmentPermit<'_>) -> AssignmentOutcome {
+        self.calls.borrow_mut().push(permit.request().clone());
         self.outcome.clone()
     }
+}
+
+struct Held;
+
+impl ClaimSession for Held {
+    fn assignment_returned(&mut self, _: &AssignmentOutcome) -> Result<(), String> {
+        Ok(())
+    }
+    fn load(&mut self) -> Result<Vec<StoredReceipt>, String> {
+        Ok(Vec::new())
+    }
+    fn append(&mut self, _: &Receipt) -> Result<(), String> {
+        Ok(())
+    }
+    fn arm_assignment(&mut self, _: &AttemptId) -> Result<(), String> {
+        Ok(())
+    }
+    fn reserve_assignment(
+        &mut self,
+        _: &AttemptId,
+        _: &AssignmentRequest,
+    ) -> Result<String, String> {
+        Ok("fake-held-generation".to_owned())
+    }
+    fn release(&mut self) -> Result<(), String> {
+        Ok(())
+    }
+}
+
+fn handoff(
+    transport: &impl AssignmentTransport,
+    request: &AssignmentRequest,
+) -> Result<AssignmentOutcome, String> {
+    let attempt = AttemptId {
+        binding: RequestBinding::from(request),
+        number: 1,
+        run: WorkflowRun {
+            run_id: 1,
+            run_attempt: 1,
+            workflow_path: ".github/workflows/dispatch-claims.yml".to_owned(),
+            workflow_revision: REVISION.to_owned(),
+        },
+    };
+    guarded_handoff(transport, request, &attempt, &mut Held)
 }
 
 #[test]

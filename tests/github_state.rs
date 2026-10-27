@@ -1,5 +1,6 @@
 use acme::assignment::{
-    AssignmentCapabilities, AssignmentOutcome, AssignmentRequest, AssignmentTransport,
+    AssignmentCapabilities, AssignmentOutcome, AssignmentPermit, AssignmentRequest,
+    AssignmentTransport,
 };
 use acme::claims::{
     ClaimBlock, ClaimSession, ClaimStore, GitHubSnapshot, GitHubState, Receipt, ReceiptProvenance,
@@ -869,6 +870,26 @@ impl ClaimStore for Store {
 }
 
 impl ClaimSession for Session<'_> {
+    fn arm_assignment(&mut self, _: &acme::claims::AttemptId) -> Result<(), String> {
+        Ok(())
+    }
+    fn reserve_assignment(
+        &mut self,
+        _: &acme::claims::AttemptId,
+        _: &AssignmentRequest,
+    ) -> Result<String, String> {
+        Ok("fake-held-generation".to_owned())
+    }
+    fn assignment_returned(
+        &mut self,
+        _: &acme::assignment::AssignmentOutcome,
+    ) -> Result<(), String> {
+        Ok(())
+    }
+    fn release(&mut self) -> Result<(), String> {
+        Ok(())
+    }
+
     fn load(&mut self) -> Result<Vec<StoredReceipt>, String> {
         Ok(self
             .0
@@ -901,8 +922,8 @@ impl AssignmentTransport for Transport {
         AssignmentCapabilities::gh_aw_0_93_5()
     }
 
-    fn assign(&self, request: &AssignmentRequest) -> AssignmentOutcome {
-        self.0.borrow_mut().push(request.clone());
+    fn assign(&self, permit: AssignmentPermit<'_>) -> AssignmentOutcome {
+        self.0.borrow_mut().push(permit.request().clone());
         AssignmentOutcome::Accepted
     }
 }

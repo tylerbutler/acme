@@ -124,6 +124,25 @@ pub trait ClaimSession {
 
     /// Acknowledge only a durable append. An error may mean that the append succeeded.
     fn append(&mut self, receipt: &Receipt) -> Result<(), String>;
+
+    /// Persist the exact pending attempt before final eligibility checks.
+    fn arm_assignment(&mut self, attempt: &AttemptId) -> Result<(), String>;
+
+    /// Check ownership and consume the one-use call reservation before the handler runs.
+    fn reserve_assignment(
+        &mut self,
+        attempt: &AttemptId,
+        request: &AssignmentRequest,
+    ) -> Result<String, String>;
+
+    /// Record the synchronous handler result. Do not replace an unknown result.
+    fn assignment_returned(
+        &mut self,
+        outcome: &crate::assignment::AssignmentOutcome,
+    ) -> Result<(), String>;
+
+    /// Close this producer before release. Reject unsettled operations.
+    fn release(&mut self) -> Result<(), String>;
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -224,36 +243,97 @@ fn reconcile_inner(
     route: Route,
 ) -> Result<ReconcileResult, ClaimBlock> {
     let binding = RequestBinding::from(request);
-    if context.repository != binding.repository
-        || context.trusted_writer.trim().is_empty()
-        || !valid_run(&context.run, context)
-        || context.run.workflow_revision != binding.approved_main_revision
-    {
-        return Err(ClaimBlock::InvalidContext);
-    }
+    check_context(context, &binding)?;
     check_capabilities(transport)?;
     let mut session = store.lock(&context.repository).map_err(ClaimBlock::Store)?;
     let journal = session.load().map_err(ClaimBlock::Store)?;
+    let prepared = prepare(&mut session, github, context, request, route, &journal);
+    let (receipt, snapshot) = match prepared {
+        Ok(Prepared::Finished(result)) => {
+            session.release().map_err(ClaimBlock::Store)?;
+            return Ok(result);
+        }
+        Ok(Prepared::Pending { receipt, snapshot }) => (receipt, snapshot),
+        Err(reason @ ClaimBlock::Store(_)) => return Err(reason),
+        Err(reason) => {
+            session.release().map_err(ClaimBlock::Store)?;
+            return Err(reason);
+        }
+    };
     let latest = validate_journal(&journal, context)?;
+    let previous = latest.get(&binding.issue).copied();
+    session.append(&receipt).map_err(ClaimBlock::Store)?;
+    session
+        .arm_assignment(&receipt.attempt)
+        .map_err(ClaimBlock::Store)?;
+    let final_check = github
+        .observe(request)
+        .map_err(ClaimBlock::GitHub)
+        .and_then(|current| {
+            if !same_approval(&snapshot, &current, request.declaration().issue) {
+                return Err(ClaimBlock::SnapshotMismatch);
+            }
+            if let Some(previous) = previous {
+                let resolution = resolution_for(&current, &previous.attempt)?;
+                if receipt.recovery.as_ref() != Some(resolution) {
+                    return Err(ClaimBlock::RecoveryRequired);
+                }
+            }
+            authorize(
+                &current,
+                request,
+                route,
+                &latest,
+                &journal,
+                context,
+                receipt.attempt.number,
+            )
+        });
+    if let Err(reason) = final_check {
+        write_state(&mut session, &receipt, ReceiptState::NotAssigned, context)?;
+        session.release().map_err(ClaimBlock::Store)?;
+        return Err(reason);
+    }
+    assign_and_record(&mut session, transport, request, &receipt, context)
+}
+
+enum Prepared {
+    Finished(ReconcileResult),
+    Pending {
+        receipt: Box<Receipt>,
+        snapshot: Box<GitHubSnapshot>,
+    },
+}
+
+fn prepare(
+    session: &mut impl ClaimSession,
+    github: &impl GitHubState,
+    context: &ReconcileContext,
+    request: &AssignmentRequest,
+    route: Route,
+    journal: &[StoredReceipt],
+) -> Result<Prepared, ClaimBlock> {
+    let binding = RequestBinding::from(request);
+    let latest = validate_journal(journal, context)?;
     let previous = latest.get(&binding.issue).copied();
     if previous.is_some_and(|receipt| receipt.attempt.binding != binding) {
         return Err(ClaimBlock::SnapshotMismatch);
     }
     let snapshot = github.observe(request).map_err(ClaimBlock::GitHub)?;
     let work = actual_work(&snapshot, &binding)?;
-    if record_completion(&mut session, &snapshot, work, previous, context)? {
-        return Ok(ReconcileResult::Complete);
+    if record_completion(session, &snapshot, work, previous, context)? {
+        return Ok(Prepared::Finished(ReconcileResult::Complete));
     }
     check_live_snapshot(&snapshot, request)?;
     if let Some(receipt) = previous {
         if has_work(work, binding.issue) {
             if matches!(receipt.state, ReceiptState::Pending | ReceiptState::Unknown) {
-                write_state(&mut session, receipt, ReceiptState::Accepted, context)?;
+                write_state(session, receipt, ReceiptState::Accepted, context)?;
             }
-            return Ok(ReconcileResult::ExistingWork);
+            return Ok(Prepared::Finished(ReconcileResult::ExistingWork));
         }
     } else if has_work(work, binding.issue) {
-        return Ok(ReconcileResult::ExistingWork);
+        return Ok(Prepared::Finished(ReconcileResult::ExistingWork));
     }
 
     let recovery = if let Some(receipt) = previous {
@@ -275,7 +355,7 @@ fn reconcile_inner(
         request,
         route,
         &latest,
-        &journal,
+        journal,
         context,
         attempt_number,
     )?;
@@ -292,37 +372,21 @@ fn reconcile_inner(
         recovery,
         recorded_by: context.run.clone(),
     };
-    session.append(&receipt).map_err(ClaimBlock::Store)?;
+    Ok(Prepared::Pending {
+        receipt: Box::new(receipt),
+        snapshot: Box::new(snapshot),
+    })
+}
 
-    // Keep the durable intent if this process stops before it records the outcome.
-    let final_check = github
-        .observe(request)
-        .map_err(ClaimBlock::GitHub)
-        .and_then(|current| {
-            if !same_approval(&snapshot, &current, request.declaration().issue) {
-                return Err(ClaimBlock::SnapshotMismatch);
-            }
-            if let Some(previous) = previous {
-                let resolution = resolution_for(&current, &previous.attempt)?;
-                if receipt.recovery.as_ref() != Some(resolution) {
-                    return Err(ClaimBlock::RecoveryRequired);
-                }
-            }
-            authorize(
-                &current,
-                request,
-                route,
-                &latest,
-                &journal,
-                context,
-                attempt_number,
-            )
-        });
-    if let Err(reason) = final_check {
-        write_state(&mut session, &receipt, ReceiptState::NotAssigned, context)?;
-        return Err(reason);
+fn check_context(context: &ReconcileContext, binding: &RequestBinding) -> Result<(), ClaimBlock> {
+    if context.repository != binding.repository
+        || context.trusted_writer.trim().is_empty()
+        || !valid_run(&context.run, context)
+        || context.run.workflow_revision != binding.approved_main_revision
+    {
+        return Err(ClaimBlock::InvalidContext);
     }
-    assign_and_record(&mut session, transport, request, &receipt, context)
+    Ok(())
 }
 
 fn record_completion(
@@ -368,7 +432,7 @@ fn assign_and_record(
     receipt: &Receipt,
     context: &ReconcileContext,
 ) -> Result<ReconcileResult, ClaimBlock> {
-    let outcome = handoff(transport, request);
+    let outcome = handoff(transport, request, &receipt.attempt, session);
     let (state, result) = match outcome {
         Ok(AssignmentOutcome::Accepted) => (ReceiptState::Accepted, ReconcileResult::Assigned),
         Ok(AssignmentOutcome::NotAssigned) => {
@@ -376,11 +440,13 @@ fn assign_and_record(
         }
         Ok(AssignmentOutcome::Unknown) => (ReceiptState::Unknown, ReconcileResult::Uncertain),
         Err(reason) => {
-            write_state(session, receipt, ReceiptState::NotAssigned, context)?;
-            return Err(ClaimBlock::Capability(reason));
+            return Err(ClaimBlock::Store(reason));
         }
     };
     write_state(session, receipt, state, context)?;
+    if state != ReceiptState::Unknown {
+        session.release().map_err(ClaimBlock::Store)?;
+    }
     Ok(result)
 }
 
@@ -634,7 +700,7 @@ fn valid_run(run: &WorkflowRun, context: &ReconcileContext) -> bool {
         && valid_revision(&run.workflow_revision)
 }
 
-fn validate_journal<'a>(
+pub(crate) fn validate_journal<'a>(
     journal: &'a [StoredReceipt],
     context: &ReconcileContext,
 ) -> Result<BTreeMap<u64, &'a Receipt>, ClaimBlock> {
