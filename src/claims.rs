@@ -240,12 +240,12 @@ fn reconcile_inner(
         return Err(ClaimBlock::SnapshotMismatch);
     }
     let snapshot = github.observe(request).map_err(ClaimBlock::GitHub)?;
-    check_live_snapshot(&snapshot, request)?;
     let work = actual_work(&snapshot, &binding)?;
+    if record_completion(&mut session, &snapshot, work, previous, context)? {
+        return Ok(ReconcileResult::Complete);
+    }
+    check_live_snapshot(&snapshot, request)?;
     if let Some(receipt) = previous {
-        if receipt.state == ReceiptState::Completed {
-            return Ok(ReconcileResult::Complete);
-        }
         if has_work(work, binding.issue) {
             if matches!(receipt.state, ReceiptState::Pending | ReceiptState::Unknown) {
                 write_state(&mut session, receipt, ReceiptState::Accepted, context)?;
@@ -258,10 +258,6 @@ fn reconcile_inner(
 
     let recovery = if let Some(receipt) = previous {
         let resolution = resolution_for(&snapshot, &receipt.attempt)?;
-        if resolution.outcome == RecoveryOutcome::Merged {
-            write_state(&mut session, receipt, ReceiptState::Completed, context)?;
-            return Ok(ReconcileResult::Complete);
-        }
         if journal.iter().any(|entry| {
             entry.receipt.attempt.binding.issue == binding.issue
                 && entry.receipt.attempt.run.run_id == context.run.run_id
@@ -327,6 +323,29 @@ fn reconcile_inner(
         return Err(reason);
     }
     assign_and_record(&mut session, transport, request, &receipt, context)
+}
+
+fn record_completion(
+    session: &mut impl ClaimSession,
+    snapshot: &GitHubSnapshot,
+    work: &[ActualWork],
+    previous: Option<&Receipt>,
+    context: &ReconcileContext,
+) -> Result<bool, ClaimBlock> {
+    let Some(receipt) = previous else {
+        return Ok(false);
+    };
+    if receipt.state == ReceiptState::Completed {
+        return Ok(true);
+    }
+    if !has_work(work, receipt.attempt.binding.issue)
+        && matches!(resolution_for(snapshot, &receipt.attempt),
+            Ok(resolution) if resolution.outcome == RecoveryOutcome::Merged)
+    {
+        write_state(session, receipt, ReceiptState::Completed, context)?;
+        return Ok(true);
+    }
+    Ok(false)
 }
 
 fn same_approval(previous: &GitHubSnapshot, current: &GitHubSnapshot, issue: u64) -> bool {

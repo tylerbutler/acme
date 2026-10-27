@@ -211,6 +211,8 @@ The final read must retain the same approval receipt. Body/spec read failures,
 changed hashes, disabled applicable gates and unavailable capacity block the call.
 A failed final check keeps the attempt and records `NotAssigned`. Later
 reconciliation checks live hashes even when an existing assignment or PR is found.
+Verified terminal completion can still close an attempt and release capacity
+after scope drift. This bookkeeping cannot authorize another assignment.
 
 An edit after the final read can still reach the builder. Rust tests simulate an
 edit in that interval: the outgoing request retains the approved snapshot, and

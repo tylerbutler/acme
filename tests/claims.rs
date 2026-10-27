@@ -566,6 +566,82 @@ fn later_hash_changes_block_reconciliation_even_with_existing_work() {
 }
 
 #[test]
+fn verified_completion_releases_capacity_despite_later_scope_drift() {
+    for (spec, body) in [("Changed spec", BODY), (SPEC, "Changed body")] {
+        let store = FakeStore::default();
+        let assignment = FakeAssignment::default();
+        assert_eq!(
+            reconcile(
+                &store,
+                &FakeGitHub::new(snapshot(17)),
+                &assignment,
+                &context(100),
+                &request(17),
+                Route::Automatic
+            ),
+            ReconcileResult::Assigned
+        );
+        let attempt = store.0.lock().unwrap().receipts[0].receipt.attempt.clone();
+        let mut completed = snapshot(17);
+        completed.observations[0].current_spec = Evidence::Known(spec.to_owned());
+        completed.observations[0].current_issue_body = Evidence::Known(body.to_owned());
+        completed.resolutions = Evidence::Known(vec![AttemptResolution {
+            attempt,
+            outcome: RecoveryOutcome::Merged,
+        }]);
+        assert_eq!(
+            reconcile(
+                &store,
+                &FakeGitHub::new(completed.clone()),
+                &assignment,
+                &context(101),
+                &request(17),
+                Route::Automatic
+            ),
+            ReconcileResult::Complete
+        );
+        assert_eq!(
+            store
+                .0
+                .lock()
+                .unwrap()
+                .receipts
+                .last()
+                .unwrap()
+                .receipt
+                .state,
+            ReceiptState::Completed
+        );
+        assert_eq!(assignment.calls.lock().unwrap().len(), 1);
+        let mut next = snapshot(18);
+        next.config.max_active_tasks = 1;
+        assert_eq!(
+            reconcile(
+                &store,
+                &FakeGitHub::new(next),
+                &assignment,
+                &context(102),
+                &request(18),
+                Route::Automatic
+            ),
+            ReconcileResult::Assigned
+        );
+        assert_eq!(
+            reconcile(
+                &store,
+                &FakeGitHub::new(completed),
+                &assignment,
+                &context(103),
+                &request(17),
+                Route::Manual
+            ),
+            ReconcileResult::Complete
+        );
+        assert_eq!(assignment.calls.lock().unwrap().len(), 2);
+    }
+}
+
+#[test]
 fn body_edit_after_final_read_does_not_replace_the_outgoing_snapshot() {
     struct EditAfterFinalRead {
         state: Mutex<(GitHubSnapshot, usize)>,
