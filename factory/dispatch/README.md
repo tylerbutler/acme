@@ -47,8 +47,10 @@ No task declarations are enrolled by this contract change.
 
 **Result: exact targets work; the complete snapshot handoff is blocked.**
 This is an offline proof for [spec 0010](../../docs/specs/0010-spec-dispatch-coordinator.md),
-not coordinator activation. Issues #42 and #41 remain blocked on an
-owner-approved resolution of the snapshot-authority limit below.
+not coordinator activation. The proposed spec revision distinguishes approved
+request binding from remote builder isolation. Existing assignment code still
+requires the stronger guarantee and blocks. This proof does not implement the
+revision or unblock #41.
 
 ### Reproduce without credentials
 
@@ -145,9 +147,10 @@ These offline tests prove request construction, not how the remote builder
 uses issue bodies, later comments, or instructions. They do not prove that the
 builder ignores changed scope, checks hashes, or uses the approved revision.
 A final local body check alone cannot close later edits or comment races.
-The full immutable-scope contract is therefore unsupported by this proven
-handoff. This does not claim that every possible platform interface is
-incapable of meeting it.
+The original immutable-scope contract is therefore unsupported by this proven
+handoff. The proposed spec revision accepts this context risk; it does not
+change the proof result. This does not claim that every possible platform
+interface is incapable of meeting the original contract.
 
 ### Interface for the claims slice
 
@@ -172,12 +175,21 @@ There is no production GitHub assignment transport, CLI command, claim engine
 or installed workflow in this proof. A fake transport's supported result does
 not confer a capability on gh-aw or prove an actual assignment.
 
-### Owner decision
+### Proposed owner decision and implementation gate
 
-Keep #42's assignment integration and #41's workflow rollout blocked.
-The owner must approve a follow-up that proves a snapshot-authoritative
-handoff, or explicitly revise spec 0010 to accept the weaker, advisory-prompt
-contract and its mutable-context risk. A different API or provider is not an
-implicit fallback. Do not mark the full handoff supported, enroll tasks, change
-the manual owner-label route, or activate the coordinator from this proof.
-No live or paid validation is authorized here.
+Spec 0010 proposes deterministic dispatch authorization and approved-snapshot
+request binding, with explicit acceptance that mutable issue context may
+influence the builder. The approved snapshot remains the scope authority;
+human review must check the PR against it before merge. Instructions and hashes
+do not establish remote isolation.
+
+Human merge of that revision must precede an owner-approved implementation
+follow-up. That follow-up must update the capability model, claims integration
+and offline tests to enforce the revised requirements. Do not change
+`immutable_task` to `Supported`; the proven isolation limitation remains.
+Keep #41 and #59 blocked until the follow-up is accepted and human-merged.
+A different API or provider is not an implicit fallback.
+
+This docs-only revision does not change code, enroll tasks, change the manual
+owner-label route, activate the coordinator or authorize live or paid
+validation.
