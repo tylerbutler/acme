@@ -111,6 +111,7 @@ struct Server {
     corrupt_signature: bool,
     pagination: Pagination,
     changed_approval_bytes: Option<&'static str>,
+    repository_metadata_fault: Option<&'static str>,
 }
 
 #[derive(Default)]
@@ -267,10 +268,22 @@ impl GitHubClient for Api {
             return Err("injected missing API evidence".to_owned());
         }
         if path.is_empty() {
-            return Ok(
-                json!({"id":42,"full_name":REPO,"default_branch":"main","private":false,
-                "owner":{"id":7,"login":"owner","type":"User"}}),
-            );
+            let mut repository = json!({"id":42,"full_name":REPO,"default_branch":"main",
+                "private":false,"visibility":"public",
+                "owner":{"id":7,"login":"owner","type":"User"}});
+            match server.repository_metadata_fault {
+                Some("private") => repository["private"] = json!(true),
+                Some("missing_private") => {
+                    repository.as_object_mut().unwrap().remove("private");
+                }
+                Some("nonboolean_private") => repository["private"] = json!("false"),
+                Some("private_visibility") => repository["visibility"] = json!("private"),
+                Some("missing_visibility") => {
+                    repository.as_object_mut().unwrap().remove("visibility");
+                }
+                _ => {}
+            }
+            return Ok(repository);
         }
         if path == "/branches/main" {
             return Ok(json!({"name":"main","protected":true,"commit":{"sha":MAIN}}));
@@ -492,9 +505,9 @@ impl ProcessRunner for Processes {
             "sourceRepositoryIdentifier":"42","sourceRepositoryOwnerIdentifier":"7",
             "sourceRepositoryOwnerURI":"https://github.com/owner",
             "sourceRepositoryURI":format!("https://github.com/{REPO}"),
-            "sourceRepositoryRef":"refs/heads/main","sourceRepositoryDigest":MAIN,
-            "buildSignerURI":signer,"buildSignerDigest":MAIN,
-            "buildConfigURI":signer,"buildConfigDigest":MAIN,
+            "sourceRepositoryRef":"refs/heads/main","sourceRepositoryDigest":entry.recorded_by.workflow_revision,
+            "buildSignerURI":signer,"buildSignerDigest":entry.recorded_by.workflow_revision,
+            "buildConfigURI":signer,"buildConfigDigest":entry.recorded_by.workflow_revision,
             "runnerEnvironment":"github-hosted",
             "runInvocationURI":format!("https://github.com/{REPO}/actions/runs/{}/attempts/{}",
                 entry.recorded_by.run_id, entry.recorded_by.run_attempt)
@@ -728,6 +741,29 @@ fn forged_signature_and_each_verified_certificate_identity_fail_closed() {
 }
 
 #[test]
+fn private_or_incomplete_visibility_metadata_blocks_before_signing_or_acquisition() {
+    for fault in [
+        "private",
+        "missing_private",
+        "nonboolean_private",
+        "private_visibility",
+        "missing_visibility",
+    ] {
+        let api = Api::new();
+        api.server.lock().unwrap().repository_metadata_fault = Some(fault);
+        assert!(store(&api, 1).lock(REPO).is_err(), "{fault}");
+        let server = api.server.lock().unwrap();
+        assert!(server.mutations.is_empty(), "{fault}");
+        assert_eq!(
+            server.reads,
+            [format!("{POLICY_PATH}@{MAIN}"), format!("repos/{REPO}")],
+            "{fault}"
+        );
+        assert!(server.entries().is_empty(), "{fault}");
+    }
+}
+
+#[test]
 fn missing_protection_bypass_and_incomplete_approval_block_before_acquisition() {
     for fault in ["protection", "bypass", "/pulls/1/files", "/compare/"] {
         let api = Api::new();
@@ -763,6 +799,88 @@ fn committed_then_timeout_is_confirmed_once_but_unresolved_append_poison_retains
         assert!(store(&api, 2).lock(REPO).is_err());
         assert_eq!(api.server.lock().unwrap().mutations.len(), 2);
     }
+}
+
+struct BudgetRevisionClient(Api);
+
+impl GitHubClient for BudgetRevisionClient {
+    fn get(&self, endpoint: &str) -> Result<Value, String> {
+        let path = endpoint.strip_prefix(&format!("repos/{REPO}")).unwrap();
+        if path == "/branches/main" {
+            return Ok(json!({"name":"main","protected":true,"commit":{"sha":MERGE}}));
+        }
+        if path.starts_with(&format!("/commits?sha={MAIN}&")) {
+            return Ok(json!([{"sha":MAIN}]));
+        }
+        if path == format!("/commits/{MAIN}/pulls?per_page=100&page=1") {
+            return Ok(json!([{"number":1}]));
+        }
+        if path == format!("/commits/{MERGE}/pulls?per_page=100&page=1") {
+            return Ok(json!([{"number":2}]));
+        }
+        if path == "/pulls/1" || path == "/pulls/2" {
+            let mut pr = self.0.get(&format!("repos/{REPO}/pulls/1"))?;
+            pr["number"] = json!(if path.ends_with('1') { 1 } else { 2 });
+            pr["merge_commit_sha"] = json!(if path.ends_with('1') { MAIN } else { MERGE });
+            return Ok(pr);
+        }
+        if path.starts_with("/pulls/2/files?") {
+            return self.0.get(&endpoint.replace("/pulls/2/", "/pulls/1/"));
+        }
+        let mut value = self.0.get(endpoint)?;
+        if path.starts_with("/actions/runs/2/") {
+            value["head_sha"] = json!(MERGE);
+        }
+        Ok(value)
+    }
+
+    fn file(&self, repository: &str, path: &str, revision: &str) -> Result<String, String> {
+        let bytes = self.0.file(repository, path, revision)?;
+        if path == POLICY_PATH && revision == MERGE {
+            let mut policy: ClaimPolicy = strict_json(bytes.as_bytes())?;
+            policy.max_entries += 1;
+            policy.max_entry_bytes += 1;
+            policy.max_bundle_bytes += 1;
+            policy.max_api_requests += 1;
+            return serde_json::to_string(&policy).map_err(|error| error.to_string());
+        }
+        Ok(bytes)
+    }
+
+    fn graphql(&self, query: &str) -> Result<Value, String> {
+        self.0.graphql(query)
+    }
+}
+
+impl ClaimClient for BudgetRevisionClient {
+    fn create_commit(&self, input: &Value) -> Result<String, String> {
+        self.0.create_commit(input)
+    }
+}
+
+#[test]
+fn owner_approved_budget_update_preserves_approved_historical_entries() {
+    let api = Api::new();
+    let original = store(&api, 1);
+    original.lock(REPO).unwrap().release().unwrap();
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let mut producer = run(2);
+    producer.workflow_revision = MERGE.to_owned();
+    let updated = GitHubClaimStore::new(
+        BudgetRevisionClient(api.clone()),
+        ProcessAttestation::new(
+            root,
+            PathBuf::from("/fake/node"),
+            PathBuf::from("/fake/gh"),
+            Processes(api.server.clone()),
+        )
+        .unwrap(),
+        REPO,
+        producer,
+    )
+    .unwrap();
+    updated.lock(REPO).unwrap().release().unwrap();
+    assert_eq!(api.server.lock().unwrap().mutations.len(), 4);
 }
 
 #[test]
@@ -820,6 +938,41 @@ fn unknown_assignment_retains_ownership_and_permit_cannot_be_used_twice() {
     );
     assert_eq!(*transport.calls.lock().unwrap(), 1);
     assert!(store(&api, 2).lock(REPO).is_err());
+}
+
+#[test]
+fn unknown_or_unreturned_reservation_cannot_be_settled_by_caller_receipts() {
+    for reserve_only in [false, true] {
+        for state in [ReceiptState::Accepted, ReceiptState::NotAssigned] {
+            let api = Api::new();
+            let owner = store(&api, 1);
+            let mut held = owner.lock(REPO).unwrap();
+            let mut receipt = pending(1);
+            held.append(&receipt).unwrap();
+            held.arm_assignment(&receipt.attempt).unwrap();
+            if reserve_only {
+                held.reserve_assignment(&receipt.attempt, &request())
+                    .unwrap();
+            } else {
+                let transport = Transport {
+                    api: api.clone(),
+                    calls: Mutex::new(0),
+                    outcome: AssignmentOutcome::Unknown,
+                };
+                assert_eq!(
+                    acme::assignment::handoff(&transport, &request(), &receipt.attempt, &mut held),
+                    Ok(AssignmentOutcome::Unknown)
+                );
+                assert_eq!(*transport.calls.lock().unwrap(), 1);
+            }
+            receipt.state = state;
+            assert!(held.append(&receipt).is_err());
+            assert!(held.release().is_err());
+            drop(held);
+            assert!(store(&api, 2).lock(REPO).is_err());
+            assert_eq!(api.server.lock().unwrap().mutations.len(), 3);
+        }
+    }
 }
 
 #[test]
@@ -1010,6 +1163,8 @@ fn unresolved_arm_or_outcome_write_cannot_be_hidden_by_release() {
         }
         assert!(held.release().is_err());
         assert!(store(&api, 2).lock(REPO).is_err());
+        drop(held);
+        assert!(store(&api, 3).lock(REPO).is_err());
         assert_eq!(api.server.lock().unwrap().mutations.len(), number);
     }
 }
@@ -1171,12 +1326,20 @@ impl acme::claims::GitHubState for StateReader {
                 label_present: true,
             })),
         };
-        if self.change == Some("existing_work") {
+        if matches!(self.change, Some("existing_work" | "initial_capacity")) {
             snapshot.work = acme::Evidence::Known(vec![acme::claims::ActualWork {
-                issue: 17,
+                issue: if self.change == Some("existing_work") {
+                    17
+                } else {
+                    99
+                },
                 active_copilot: 1,
                 open_implementation_prs: 0,
             }]);
+        }
+        if self.change == Some("initial_scope") {
+            snapshot.observations[0].current_issue_body =
+                acme::Evidence::Known("changed".to_owned());
         }
         if final_read {
             match self.change {
@@ -1244,6 +1407,82 @@ fn actual_reconciliation_uses_the_guarded_store_for_both_routes_and_settled_rele
         assert!(matches!(entries[4].operation, Operation::Release { .. }));
         assert!(store(&api, 2).lock(REPO).is_ok());
     }
+}
+
+#[test]
+fn initial_scope_or_capacity_block_releases_without_receipts_or_assignment() {
+    for change in ["initial_scope", "initial_capacity"] {
+        let api = Api::new();
+        let owner = store(&api, 1);
+        let state = StateReader {
+            api: api.clone(),
+            reads: Mutex::new(0),
+            change: Some(change),
+        };
+        let transport = Transport {
+            api: api.clone(),
+            calls: Mutex::new(0),
+            outcome: AssignmentOutcome::Accepted,
+        };
+        let result = acme::claims::reconcile(
+            &owner,
+            &state,
+            &transport,
+            &reconcile_context(1),
+            &request(),
+            Route::Automatic,
+        );
+        if change == "initial_capacity" {
+            assert_eq!(
+                result,
+                acme::claims::ReconcileResult::Blocked(acme::claims::ClaimBlock::CapacityExhausted)
+            );
+        } else {
+            assert!(matches!(result, acme::claims::ReconcileResult::Blocked(_)));
+        }
+        assert_eq!(*transport.calls.lock().unwrap(), 0);
+        let entries = api.server.lock().unwrap().entries();
+        assert_eq!(entries.len(), 2);
+        assert!(matches!(entries[0].operation, Operation::Acquire {}));
+        assert!(matches!(entries[1].operation, Operation::Release { .. }));
+        assert!(owner.lock(REPO).is_err());
+        store(&api, 2).lock(REPO).unwrap().release().unwrap();
+    }
+}
+
+#[test]
+fn uncertain_pending_write_preserves_operation_error_without_cleanup_release() {
+    let api = Api::new();
+    api.server.lock().unwrap().fail_mutation = Some((2, false));
+    let owner = store(&api, 1);
+    let state = StateReader {
+        api: api.clone(),
+        reads: Mutex::new(0),
+        change: None,
+    };
+    let transport = Transport {
+        api: api.clone(),
+        calls: Mutex::new(0),
+        outcome: AssignmentOutcome::Accepted,
+    };
+    let result = acme::claims::reconcile(
+        &owner,
+        &state,
+        &transport,
+        &reconcile_context(1),
+        &request(),
+        Route::Automatic,
+    );
+    let acme::claims::ReconcileResult::Blocked(acme::claims::ClaimBlock::Store(error)) = result
+    else {
+        panic!("expected the original unresolved store operation");
+    };
+    assert!(error.starts_with("unresolved journal operation "));
+    assert!(error.contains("retain ownership"));
+    assert_eq!(*transport.calls.lock().unwrap(), 0);
+    assert_eq!(api.server.lock().unwrap().mutations.len(), 2);
+    assert_eq!(api.server.lock().unwrap().entries().len(), 1);
+    assert!(store(&api, 2).lock(REPO).is_err());
 }
 
 #[test]

@@ -321,6 +321,7 @@ impl<C: ClaimClient, A: Attestation> GitHubClaimStore<C, A> {
             || metadata["owner"]["type"] != "User"
             || metadata["default_branch"] != "main"
             || metadata["private"] != false
+            || metadata["visibility"] != "public"
         {
             return Err("unsupported claim-store repository".to_owned());
         }
@@ -360,6 +361,7 @@ impl<C: ClaimClient, A: Attestation> GitHubClaimStore<C, A> {
             || repository["full_name"] != self.repository
             || repository["owner"]["type"] != "User"
             || repository["private"] != false
+            || repository["visibility"] != "public"
         {
             return Err("repository identity does not match claim policy".to_owned());
         }
@@ -1113,14 +1115,17 @@ impl<C: ClaimClient, A: Attestation> ClaimSession for GitHubClaimSession<'_, C, 
     }
     fn assignment_returned(
         &mut self,
-        outcome: &crate::assignment::AssignmentOutcome,
+        returned: crate::assignment::AssignmentReturn,
     ) -> Result<(), String> {
         self.usable()?;
-        if !self.reserved || self.returned_state.is_some() {
+        if !self.reserved
+            || self.returned_state.is_some()
+            || returned.generation() != self.owner.generation
+        {
             self.poisoned = true;
             return Err("assignment outcome is absent or already recorded".to_owned());
         }
-        self.returned_state = Some(match outcome {
+        self.returned_state = Some(match returned.outcome() {
             crate::assignment::AssignmentOutcome::Accepted => ReceiptState::Accepted,
             crate::assignment::AssignmentOutcome::NotAssigned => ReceiptState::NotAssigned,
             crate::assignment::AssignmentOutcome::Unknown => ReceiptState::Unknown,

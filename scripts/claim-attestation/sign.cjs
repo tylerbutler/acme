@@ -34,7 +34,9 @@ async function main() {
   writeOutput(JSON.stringify(result.bundle));
 }
 
-main().catch(() => {
-  process.stderr.write('Claim attestation failed\n');
+main().catch(error => {
+  process.stderr.write(error.message === 'Missing isolated GitHub job identity'
+    ? 'Missing isolated GitHub job identity\n'
+    : 'Claim attestation failed\n');
   process.exitCode = 1;
 });

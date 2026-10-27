@@ -880,10 +880,7 @@ impl ClaimSession for Session<'_> {
     ) -> Result<String, String> {
         Ok("fake-held-generation".to_owned())
     }
-    fn assignment_returned(
-        &mut self,
-        _: &acme::assignment::AssignmentOutcome,
-    ) -> Result<(), String> {
+    fn assignment_returned(&mut self, _: acme::assignment::AssignmentReturn) -> Result<(), String> {
         Ok(())
     }
     fn release(&mut self) -> Result<(), String> {

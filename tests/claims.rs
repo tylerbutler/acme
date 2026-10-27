@@ -142,7 +142,7 @@ fn stored(receipt: Receipt) -> StoredReceipt {
 }
 
 impl ClaimSession for FakeSession<'_> {
-    fn assignment_returned(&mut self, _: &AssignmentOutcome) -> Result<(), String> {
+    fn assignment_returned(&mut self, _: acme::assignment::AssignmentReturn) -> Result<(), String> {
         Ok(())
     }
     fn arm_assignment(&mut self, _: &acme::claims::AttemptId) -> Result<(), String> {

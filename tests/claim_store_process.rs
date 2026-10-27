@@ -22,7 +22,14 @@ struct FakeProcess {
 impl ProcessRunner for FakeProcess {
     fn run(&self, request: &ProcessRequest) -> Result<Vec<u8>, String> {
         assert_eq!(request.environment["GH_TOKEN"], "offline-job-token");
-        for forbidden in ["GH_PAT", "GITHUB_TOKEN", "HOME", "NODE_OPTIONS"] {
+        for forbidden in [
+            "GH_PAT",
+            "GITHUB_TOKEN",
+            "HOME",
+            "GH_CONFIG_DIR",
+            "XDG_CACHE_HOME",
+            "NODE_OPTIONS",
+        ] {
             assert!(!request.environment.contains_key(forbidden));
         }
         assert!(request.max_output_bytes > 0);
@@ -176,7 +183,15 @@ fn real_process_boundary_limits_output_and_waits_for_the_child() {
             program: PathBuf::from("/usr/bin/python3"),
             arguments: vec![
                 "-c".to_owned(),
-                "import os, stat, sys; assert stat.S_IMODE(os.stat('.').st_mode) == 0o700; assert os.environ['HOME'] == os.getcwd(); sys.stdout.write('x' * 20000)".to_owned(),
+                concat!(
+                    "import os, stat, sys; ",
+                    "assert stat.S_IMODE(os.stat('.').st_mode) == 0o700; ",
+                    "assert os.environ['HOME'] == os.getcwd(); ",
+                    "assert os.environ['GH_CONFIG_DIR'] == os.path.join(os.getcwd(), 'gh-config'); ",
+                    "assert os.environ['XDG_CACHE_HOME'] == os.path.join(os.getcwd(), 'cache'); ",
+                    "assert 'GH_PAT' not in os.environ; ",
+                    "sys.stdout.write('x' * 20000)"
+                ).to_owned(),
             ],
             stdin: Vec::new(),
             environment: BTreeMap::from([(token_name.to_owned(), "offline-job-token".to_owned())]),

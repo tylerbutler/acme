@@ -138,7 +138,7 @@ pub trait ClaimSession {
     /// Record the synchronous handler result. Do not replace an unknown result.
     fn assignment_returned(
         &mut self,
-        outcome: &crate::assignment::AssignmentOutcome,
+        returned: crate::assignment::AssignmentReturn,
     ) -> Result<(), String>;
 
     /// Close this producer before release. Reject unsettled operations.

@@ -151,6 +151,21 @@ pub struct AssignmentPermit<'a> {
     _session: &'a mut dyn ClaimSession,
 }
 
+pub struct AssignmentReturn {
+    generation: String,
+    outcome: AssignmentOutcome,
+}
+
+impl AssignmentReturn {
+    pub(crate) fn generation(&self) -> &str {
+        &self.generation
+    }
+
+    pub(crate) const fn outcome(&self) -> &AssignmentOutcome {
+        &self.outcome
+    }
+}
+
 impl AssignmentPermit<'_> {
     #[must_use]
     pub const fn request(&self) -> &AssignmentRequest {
@@ -186,12 +201,16 @@ pub fn handoff(
         .check_required()
         .map_err(|error| format!("unsupported assignment capability: {}", error.capability))?;
     let generation = session.reserve_assignment(attempt, request)?;
+    let returned_generation = generation.clone();
     let outcome = transport.assign(AssignmentPermit {
         request,
         attempt,
         generation,
         _session: &mut *session,
     });
-    session.assignment_returned(&outcome)?;
+    session.assignment_returned(AssignmentReturn {
+        generation: returned_generation,
+        outcome: outcome.clone(),
+    })?;
     Ok(outcome)
 }

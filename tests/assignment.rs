@@ -28,7 +28,7 @@ impl AssignmentTransport for FakeAssignment {
 struct Held;
 
 impl ClaimSession for Held {
-    fn assignment_returned(&mut self, _: &AssignmentOutcome) -> Result<(), String> {
+    fn assignment_returned(&mut self, _: acme::assignment::AssignmentReturn) -> Result<(), String> {
         Ok(())
     }
     fn load(&mut self) -> Result<Vec<StoredReceipt>, String> {

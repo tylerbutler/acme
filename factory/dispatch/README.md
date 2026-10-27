@@ -243,6 +243,9 @@ protocol in [spec 0011](../../docs/specs/0011-github-claim-store.md).
 user token or local CLI credentials. The store is a library adapter, not an
 installed workflow or a CLI command. `GitHubClaimStore::production` constructs
 the concrete job client, signing helper and verifier from absolute tool paths.
+Only public user-owned repositories on github.com are supported. Repository
+metadata must explicitly report `private: false` and `visibility: "public"`
+before signing or acquisition. Missing or conflicting visibility fails closed.
 
 The adapter loads `factory/dispatch/claim-store.json` from authenticated,
 owner-merged protected main. No policy, genesis, ruleset or workflow is installed
@@ -303,6 +306,8 @@ Caller-controlled predicate metadata is not provenance.
 ### Ownership and guarded assignment
 
 Each store instance has a fresh process nonce and can acquire only once.
+Future multi-issue runners must create a new store for each acquisition. They
+must not restore or reuse an earlier producer.
 The acquisition entry digest is its generation. There is no resume, expiry,
 heartbeat, takeover, reset command or release on destruction.
 Manual and automatic reconciliation use the same adapter and protocol.
@@ -310,6 +315,9 @@ Manual and automatic reconciliation use the same adapter and protocol.
 Reconciliation durably records `Pending`, arms its complete attempt binding,
 rechecks fresh approval/scope/gates/capacity, verifies ownership and protection,
 and consumes one session-bound permit in the synchronous transport.
+Only `handoff` creates the one-use completion value after the synchronous
+transport returns. Caller-written receipts cannot settle an unreturned
+reservation or replace an unknown result.
 Known outcomes become durable before explicit release. A failed final check
 records `NotAssigned` and can release after confirmation. A read-only preflight
 block can release settled ownership. An unknown assignment or unresolved write
