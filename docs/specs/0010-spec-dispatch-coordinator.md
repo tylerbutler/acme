@@ -1,6 +1,10 @@
 # Factory coordinator: spec-approved automatic dispatch
 
-**Status: proposed approval-model change, not an enabled workflow.**
+**Status: proposed dispatch-assurance revision, not an enabled workflow.**
+
+This revision requires human merge before implementation. Existing assignment
+code still blocks on unsupported immutable-task authority. This document does
+not change that code or authorize coordinator activation.
 
 ## Goal and basis
 
@@ -17,16 +21,17 @@ are separate approvals.
 
 - A spec PR includes versioned task declarations under `factory/dispatch/`.
   Human merge to protected main approves only the listed implementation
-  issues, their immutable task contracts and their prerequisites. A Markdown
+  issues, their recorded task snapshots and their prerequisites. A Markdown
   link, open spec PR, label, comment or agent decision alone is not approval.
 - Bind each declaration to this repository, issue number, a spec under
   `docs/specs/`, the spec content hash and an approved issue-body snapshot/hash.
   Define a strict typed format and canonicalization. Record the approving
   human merge and exact main revision in the dispatch receipt.
-- Later issue-body or spec changes invalidate the previous authorization.
-  Re-approve changed scope through a new reviewed declaration; do not send
-  mutable issue instructions as the approved task. Labels/comments do not
-  amend the snapshot and must not become hidden scope changes.
+- Issue-body or spec changes found before assignment invalidate the previous
+  authorization. Re-approve changed scope through a new reviewed declaration.
+  Send the approved snapshot as the task instructions, not a replacement
+  derived from live issue text. Labels/comments do not amend the snapshot or
+  authorize new scope. They can still influence the builder as described below.
 - Only bounded implementation slices qualify. M4-M8 milestone trackers,
   design/research umbrellas, owner-operated tests, provisioning, releases and
   adoption actions are not dispatchable. New child issues need their own
@@ -58,6 +63,44 @@ Required workflow/assignment kill switches, approved secret references and
 positive resource limits must all permit dispatch. Missing configuration,
 unknown API state, authentication failure and unsupported capabilities block
 the task with a useful reason.
+
+## Dispatch assurance and builder-context limit
+
+The required guarantee covers dispatch authorization and request construction,
+not isolation of the remote builder from mutable issue context.
+
+Deterministic code must bind each assignment request to the exact authorized
+repository and issue, the complete approved task snapshot, its contract hash
+and the approved protected-main revision. Derive these values from verified
+protected-main declarations and approval evidence, never from agent output.
+Record them in trusted claim/attempt evidence. Recheck the live issue-body and
+spec hashes immediately before assignment; a mismatch or failed read blocks
+the call. Request construction alone does not establish authorization.
+
+Pass the complete approved snapshot, contract hash and approving main revision
+through trusted configured assignment instructions. Prove with the pinned
+handler that substituted agent output cannot change the target or these
+instructions. Hashes and revisions in instructions support traceability;
+they do not enforce builder behavior or a checkout revision.
+
+The pinned handoff can supply these instructions, but it does not prove that
+the builder ignores the current issue or later comments. The final eligibility
+read and assignment are not atomic. An issue edit after that read, or later
+comments, may influence the builder. The owner accepts this residual risk
+through human merge of this revision. Later context never authorizes scope
+changes; a later reconciliation must block further assignment if hashes differ.
+
+Human review must compare the resulting PR with the recorded approved snapshot
+and spec before merge. Reject out-of-scope work or obtain a new reviewed
+declaration before accepting changed scope. Human review is the final merge
+control, not proof of context isolation or prevention of prompt injection.
+Agent context cannot grant workflow permissions or approval authority.
+
+The alternative is to retain the stronger isolation requirement and keep
+dispatch blocked until a separately approved handoff proves it. This revision
+instead accepts the documented context risk while retaining deterministic
+dispatch controls and human merge. A different API or provider still needs
+explicit approval.
 
 ## Workflow and assignment boundary
 
@@ -115,13 +158,20 @@ policy is implemented and activated, all current per-issue gates remain.
 3. Repeated/concurrent events, manual/automatic races, an existing Copilot
    assignment or linked PR, API timeout and stale claims do not cause duplicate
    dispatch. Test unknown outcomes and recovery explicitly.
-4. Fake transport tests prove the privileged assignment target is exactly the
-   authorized claimed issue, not an arbitrary number from agent output.
-   Mutable issue comments cannot change the approved task or permissions.
-5. Global/assignment/coordinator kill switches and exhausted capacity stop
+4. Fake transport and pinned-handler tests prove that the target and configured
+   snapshot instructions match the authorized claim. Substituted agent output
+   cannot change the repository, issue, snapshot, contract hash or approving
+   main revision sent by the handler. Missing or unsupported required
+   capabilities block before assignment.
+5. Changed issue-body or spec hashes at the final eligibility check block the
+   call. Offline cases include later body/comment changes and state clearly
+   that the request remains bound but builder context is not isolated. A later
+   hash mismatch blocks further assignment. Human review compares the PR with
+   the recorded scope; tests do not claim to prove remote builder behavior.
+6. Global/assignment/coordinator kill switches and exhausted capacity stop
    dispatch before inference or assignment. Reporting is deduplicated; CI and
    tests need no credentials, paid agent runs or real repository writes.
-6. Code remains compatible with pinned Rust and gh-aw. Required local/CI checks
+7. Code remains compatible with pinned Rust and gh-aw. Required local/CI checks
    pass; human merge remains necessary for every implementation and spec PR.
 
 ## Implementation slices
@@ -134,6 +184,20 @@ policy is implemented and activated, all current per-issue gates remain.
 
 These slices themselves use the existing owner-ready gate while bootstrapping;
 this unimplemented coordinator cannot approve or start its own installation.
+
+### Follow-up after this revision merges
+
+The merged handoff proof and claims code retain their original
+`immutable_task = Unsupported` result. Do not relabel that guarantee as
+supported or bypass the gate. An owner-approved implementation follow-up must
+replace the required isolation capability with explicit checks for exact
+target binding and approved-snapshot request binding, update claims integration
+and add the acceptance cases above. Unsupported or unknown required
+capabilities must still block assignment.
+
+Keep #41 and its draft #59 blocked until that follow-up is accepted and
+human-merged. Completing a proof, closing an issue or merging this spec revision
+alone does not establish a working production transport or satisfy slice B.
 
 ## Rollout and non-goals
 
