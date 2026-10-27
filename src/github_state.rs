@@ -221,7 +221,7 @@ impl<C: GitHubClient> GitHubStateReader<C> {
         }
     }
 
-    fn closed_by(&self, repository: &str, number: u64) -> Result<Vec<(u64, String)>, String> {
+    fn closed_by(&self, repository: &str, number: u64) -> Result<Vec<u64>, String> {
         let (owner, name) = repository.split_once('/').ok_or("invalid repository")?;
         let mut cursor = Value::Null;
         let mut seen = BTreeSet::new();
@@ -229,7 +229,7 @@ impl<C: GitHubClient> GitHubStateReader<C> {
         let mut merges = Vec::new();
         loop {
             let query = format!(
-                "query {{ repository(owner: {owner:?}, name: {name:?}) {{ issue(number: {number}) {{ timelineItems(itemTypes: [CLOSED_EVENT], first: 100, after: {cursor}) {{ nodes {{ ... on ClosedEvent {{ id createdAt closer {{ __typename ... on PullRequest {{ number repository {{ nameWithOwner }} }} }} }} }} pageInfo {{ hasNextPage endCursor }} }} }} }} }}"
+                "query {{ repository(owner: {owner:?}, name: {name:?}) {{ issue(number: {number}) {{ timelineItems(itemTypes: [CLOSED_EVENT], first: 100, after: {cursor}) {{ nodes {{ ... on ClosedEvent {{ id closer {{ __typename ... on PullRequest {{ number repository {{ nameWithOwner }} }} }} }} }} pageInfo {{ hasNextPage endCursor }} }} }} }} }}"
             );
             let result = self.client.graphql(&query)?;
             if result.get("errors").is_some() {
@@ -254,10 +254,7 @@ impl<C: GitHubClient> GitHubStateReader<C> {
                         if text(closer, "/repository/nameWithOwner")? != repository {
                             return Err("foreign issue closure".to_owned());
                         }
-                        merges.push((
-                            positive(closer, "/number")?,
-                            text(event, "/createdAt")?.to_owned(),
-                        ));
+                        merges.push(positive(closer, "/number")?);
                     }
                     "Commit" => {}
                     _ => return Err("unknown issue closure origin".to_owned()),
@@ -366,11 +363,9 @@ impl<C: GitHubClient> GitHubStateReader<C> {
                 if is_copilot(text(assignee, "/login")?) {
                     if issue["state"] == "closed" {
                         let closures = self.closed_by(repository, number)?;
-                        if let [(pr, closed_at)] = closures.as_slice() {
-                            let merged = self.human_merge(repository, *pr, owner, revision)?;
-                            if text(&merged, "/merged_at")? == closed_at {
-                                continue;
-                            }
+                        if let [pr] = closures.as_slice() {
+                            self.human_merge(repository, *pr, owner, revision)?;
+                            continue;
                         }
                     } else if issue["state"] != "open" {
                         return Err("unknown assigned issue state".to_owned());
@@ -405,13 +400,12 @@ impl<C: GitHubClient> GitHubStateReader<C> {
                             .iter()
                             .find(|pr| pr["id"] == id)
                             .ok_or("agent task references an unavailable PR")?;
-                        bound.extend(
-                            links
-                                .get(&positive(pr, "/number")?)
-                                .ok_or("missing agent PR links")?
-                                .iter()
-                                .copied(),
-                        );
+                        let number = positive(pr, "/number")?;
+                        let issues = match links.get(&number) {
+                            Some(issues) => issues.clone(),
+                            None => self.closing_issues(repository, number)?,
+                        };
+                        bound.extend(issues);
                     }
                 }
                 if bound.is_empty() {
@@ -598,13 +592,10 @@ impl<C: GitHubClient> GitHubStateReader<C> {
         approved_revisions: &BTreeSet<String>,
     ) -> Result<Evidence<Option<PrerequisiteCompletion>>, String> {
         let mut completions = Vec::new();
-        for (pr_number, closed_at) in self.closed_by(read.repository, number)? {
+        for pr_number in self.closed_by(read.repository, number)? {
             if !excluded.contains(&pr_number) {
                 let merged =
                     self.human_merge(read.repository, pr_number, read.owner, read.revision)?;
-                if text(&merged, "/merged_at")? != closed_at {
-                    return Err("issue closure does not match implementation merge".to_owned());
-                }
                 let merge = text(&merged, "/merge_commit_sha")?;
                 for approved_revision in approved_revisions {
                     if approved_revision == merge {
@@ -752,7 +743,7 @@ impl<C: GitHubClient> GitHubStateReader<C> {
             if !numbers.insert(number) {
                 return Err("duplicate PR evidence".to_owned());
             }
-            if pr["state"] == "open" || pr["merged_at"].as_str().is_some() {
+            if pr["state"] == "open" {
                 links.insert(number, self.closing_issues(repository, number)?);
             } else if pr["state"] != "closed" {
                 return Err("unknown PR state".to_owned());

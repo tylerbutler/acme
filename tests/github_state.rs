@@ -984,3 +984,24 @@ fn failed_or_incomplete_reads_never_claim_or_assign() {
         assert!(store.0.borrow().is_empty(), "{endpoint}");
     }
 }
+
+#[test]
+fn delayed_immutable_closure_events_still_prove_the_merge_binding() {
+    let (mut fake, request) = accepted_prerequisite();
+    fake.responses.get_mut("closed:16:null").unwrap()["data"]["repository"]["issue"]["timelineItems"]
+        ["nodes"][0]["createdAt"] = json!("2026-10-27T01:00:01Z");
+    let snapshot = GitHubStateReader::new(fake).observe(&request).unwrap();
+    assert_eq!(decision(&snapshot, 17), Eligibility::Eligible);
+}
+
+#[test]
+fn irrelevant_historical_pr_links_are_not_required_for_capacity() {
+    let mut fake = fixture();
+    fake.responses.insert(
+        "repos/owner/acme/pulls?state=all&per_page=100&page=1".to_owned(),
+        json!([merged_pr(20)]),
+    );
+    let snapshot = GitHubStateReader::new(fake).observe(&request()).unwrap();
+    assert_eq!(snapshot.work, Evidence::Known(vec![]));
+    assert_eq!(decision(&snapshot, 17), Eligibility::Eligible);
+}
