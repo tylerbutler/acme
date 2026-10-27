@@ -1,7 +1,6 @@
 use crate::CoordinatorConfig;
 use crate::assignment::{
-    AssignmentBlocked, AssignmentOutcome, AssignmentRequest, AssignmentTransport, Capability,
-    handoff,
+    AssignmentBlocked, AssignmentOutcome, AssignmentRequest, AssignmentTransport, handoff,
 };
 use crate::coordinator::{
     CapacityState, Eligibility, Evidence, KillSwitches, PlannerInput, ReasonCode, TaskObservation,
@@ -34,6 +33,7 @@ pub struct RequestBinding {
     pub issue: u64,
     pub approved_main_revision: String,
     pub contract_sha256: String,
+    pub approved_contract: String,
 }
 
 impl From<&AssignmentRequest> for RequestBinding {
@@ -43,6 +43,7 @@ impl From<&AssignmentRequest> for RequestBinding {
             issue: request.declaration().issue,
             approved_main_revision: request.approved_main_revision().to_owned(),
             contract_sha256: request.contract_sha256().to_owned(),
+            approved_contract: request.approved_contract().to_owned(),
         }
     }
 }
@@ -240,10 +241,11 @@ fn reconcile_inner(
     }
     let snapshot = github.observe(request).map_err(ClaimBlock::GitHub)?;
     let work = actual_work(&snapshot, &binding)?;
+    if record_completion(&mut session, &snapshot, work, previous, context)? {
+        return Ok(ReconcileResult::Complete);
+    }
+    check_live_snapshot(&snapshot, request)?;
     if let Some(receipt) = previous {
-        if receipt.state == ReceiptState::Completed {
-            return Ok(ReconcileResult::Complete);
-        }
         if has_work(work, binding.issue) {
             if matches!(receipt.state, ReceiptState::Pending | ReceiptState::Unknown) {
                 write_state(&mut session, receipt, ReceiptState::Accepted, context)?;
@@ -256,10 +258,6 @@ fn reconcile_inner(
 
     let recovery = if let Some(receipt) = previous {
         let resolution = resolution_for(&snapshot, &receipt.attempt)?;
-        if resolution.outcome == RecoveryOutcome::Merged {
-            write_state(&mut session, receipt, ReceiptState::Completed, context)?;
-            return Ok(ReconcileResult::Complete);
-        }
         if journal.iter().any(|entry| {
             entry.receipt.attempt.binding.issue == binding.issue
                 && entry.receipt.attempt.run.run_id == context.run.run_id
@@ -283,7 +281,7 @@ fn reconcile_inner(
     )?;
 
     let receipt = Receipt {
-        version: 1,
+        version: 2,
         attempt: AttemptId {
             binding,
             number: attempt_number,
@@ -301,6 +299,9 @@ fn reconcile_inner(
         .observe(request)
         .map_err(ClaimBlock::GitHub)
         .and_then(|current| {
+            if !same_approval(&snapshot, &current, request.declaration().issue) {
+                return Err(ClaimBlock::SnapshotMismatch);
+            }
             if let Some(previous) = previous {
                 let resolution = resolution_for(&current, &previous.attempt)?;
                 if receipt.recovery.as_ref() != Some(resolution) {
@@ -322,6 +323,42 @@ fn reconcile_inner(
         return Err(reason);
     }
     assign_and_record(&mut session, transport, request, &receipt, context)
+}
+
+fn record_completion(
+    session: &mut impl ClaimSession,
+    snapshot: &GitHubSnapshot,
+    work: &[ActualWork],
+    previous: Option<&Receipt>,
+    context: &ReconcileContext,
+) -> Result<bool, ClaimBlock> {
+    let Some(receipt) = previous else {
+        return Ok(false);
+    };
+    if receipt.state == ReceiptState::Completed {
+        return Ok(true);
+    }
+    if !has_work(work, receipt.attempt.binding.issue)
+        && matches!(resolution_for(snapshot, &receipt.attempt),
+            Ok(resolution) if resolution.outcome == RecoveryOutcome::Merged)
+    {
+        write_state(session, receipt, ReceiptState::Completed, context)?;
+        return Ok(true);
+    }
+    Ok(false)
+}
+
+fn same_approval(previous: &GitHubSnapshot, current: &GitHubSnapshot, issue: u64) -> bool {
+    previous
+        .observations
+        .iter()
+        .filter(|observation| observation.issue == issue)
+        .map(|observation| &observation.approval)
+        .eq(current
+            .observations
+            .iter()
+            .filter(|observation| observation.issue == issue)
+            .map(|observation| &observation.approval))
 }
 
 fn assign_and_record(
@@ -348,17 +385,46 @@ fn assign_and_record(
 }
 
 fn check_capabilities(transport: &impl AssignmentTransport) -> Result<(), ClaimBlock> {
-    let capabilities = transport.capabilities();
-    for (capability, status) in [
-        ("exact_target", capabilities.exact_target),
-        ("immutable_task", capabilities.immutable_task),
+    transport
+        .capabilities()
+        .check_required()
+        .map_err(ClaimBlock::Capability)
+}
+
+fn check_live_snapshot(
+    snapshot: &GitHubSnapshot,
+    request: &AssignmentRequest,
+) -> Result<(), ClaimBlock> {
+    let mut matching = snapshot
+        .observations
+        .iter()
+        .filter(|observation| observation.issue == request.declaration().issue);
+    let (Some(observation), None) = (matching.next(), matching.next()) else {
+        return Err(ClaimBlock::SnapshotMismatch);
+    };
+    for (content, hash, changed, unknown, error) in [
+        (
+            &observation.current_spec,
+            &request.declaration().spec.sha256,
+            ReasonCode::SpecChanged,
+            ReasonCode::SpecContentUnknown,
+            ReasonCode::SpecContentError,
+        ),
+        (
+            &observation.current_issue_body,
+            &request.declaration().issue_body.sha256,
+            ReasonCode::IssueBodyChanged,
+            ReasonCode::IssueBodyUnknown,
+            ReasonCode::IssueBodyError,
+        ),
     ] {
-        if status != Capability::Supported {
-            return Err(ClaimBlock::Capability(AssignmentBlocked {
-                capability,
-                status,
-            }));
-        }
+        let reason = match content {
+            Evidence::Known(content) if content_sha256(content) == *hash => continue,
+            Evidence::Known(_) => changed,
+            Evidence::Unknown => unknown,
+            Evidence::Error => error,
+        };
+        return Err(ClaimBlock::Ineligible(reason));
     }
     Ok(())
 }
@@ -590,11 +656,17 @@ fn validate_journal<'a>(
         {
             return Err(ClaimBlock::UntrustedReceipt);
         }
-        if receipt.version != 1
+        let bound_request = AssignmentRequest::from_approved_snapshot(
+            &binding.approved_contract,
+            &binding.approved_main_revision,
+        )
+        .map_err(|_| ClaimBlock::InvalidHistory)?;
+        if receipt.version != 2
             || binding.issue == 0
             || !valid_revision(&binding.approved_main_revision)
             || !valid_sha256(&binding.contract_sha256)
             || receipt.attempt.run.workflow_revision != binding.approved_main_revision
+            || RequestBinding::from(&bound_request) != *binding
         {
             return Err(ClaimBlock::InvalidHistory);
         }

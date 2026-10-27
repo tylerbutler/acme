@@ -43,12 +43,17 @@ settings do not enable a workflow or authorize an assignment by themselves.
 
 No task declarations are enrolled by this contract change.
 
-## Exact-target handoff proof (#52)
+## Approved-snapshot request binding (#52, #62)
 
-**Result: exact targets work; the complete snapshot handoff is blocked.**
+**Result: exact targets and configured snapshot instructions are request-bound.
+Remote builder context isolation remains unsupported.**
 This is an offline proof for [spec 0010](../../docs/specs/0010-spec-dispatch-coordinator.md),
-not coordinator activation. Issues #42 and #41 remain blocked on an
-owner-approved resolution of the snapshot-authority limit below.
+not coordinator activation or a production transport. The approved revision
+requires exact-target and approved-snapshot request binding as separate
+capabilities. Unknown or unsupported required capabilities block before claims
+or assignment. `immutable_task` remains `Unsupported`; it is not the revised
+required guarantee. Keep #41 and draft #59 blocked until this implementation
+is accepted and human-merged. Then resume #59 rather than open another rollout PR.
 
 ### Reproduce without credentials
 
@@ -68,6 +73,7 @@ cd /home/runner/work/acme/acme
 ACME_GH_AW_BINARY=/tmp/acme-assignment-tools/gh-aw \
 ACME_GH_AW_ACTIONS=/tmp/acme-assignment-actions just prove-assignment
 cargo test --locked --test assignment
+cargo test --locked --test claims
 just check
 ```
 
@@ -119,6 +125,13 @@ neither input. Full-file hashing is conservative: formatting changes also
 require a new binding. This is a local request binding, not a new declaration
 schema or a GitHub enforcement field.
 
+Rust tests compare `AssignmentRequest::gh_aw_config()` with the shared
+`tests/fixtures/assignment-handoff/config.json` fixture. The pinned compiler
+proof consumes that same configuration's target, repository and complete
+instructions, then checks the real pinned handler's outgoing request.
+Substituted agent fields cannot replace the snapshot, hash or revision.
+The wildcard variant is only a negative control, not a supported configuration.
+
 Pinned runtime source:
 
 - [Configured instructions and target](https://github.com/github/gh-aw-actions/blob/de9d416cac8ccea1a2d582cb07c4b7db96946792/setup/js/assign_to_agent.cjs#L218-L236)
@@ -145,11 +158,14 @@ These offline tests prove request construction, not how the remote builder
 uses issue bodies, later comments, or instructions. They do not prove that the
 builder ignores changed scope, checks hashes, or uses the approved revision.
 A final local body check alone cannot close later edits or comment races.
-The full immutable-scope contract is therefore unsupported by this proven
-handoff. This does not claim that every possible platform interface is
-incapable of meeting it.
+The original immutable-scope contract is therefore unsupported by this proven
+handoff. The merged spec revision accepts this context risk. Instructions do not
+enforce a checkout revision. Human review must compare each PR with its recorded
+approved snapshot and spec before merge. Reject out-of-scope work or obtain a
+new reviewed declaration. This does not claim that every possible platform
+interface is incapable of meeting the original contract.
 
-### Interface for the claims slice
+### Interface for shared claims and slice C
 
 `src/assignment.rs` defines the bounded, fakeable interface:
 
@@ -158,26 +174,59 @@ incapable of meeting it.
   and records the complete contract hash. Fields are private and read-only.
   Construction is **not authorization**. The caller must obtain these inputs
   from verified protected main and check approval, eligibility and the claim.
+  The complete contract uses the same LF canonicalization as its hash.
+  Issue numbers must fit the exact JavaScript integer range.
+- `AssignmentRequest::gh_aw_config()` derives a numeric target, one repository,
+  `max: 1`, the restricted Copilot agent, and complete configured instructions.
+  Its fields are private and serializable, not agent-provided overrides.
+  Supply this configuration as data to the trusted handler. Do not interpolate
+  contract text into executable workflow source. The offline compilation fixture
+  is not production wiring.
 - `AssignmentTransport::capabilities()` returns separate exact-target and
-  immutable-task results: `Supported`, `Unsupported`, or `Unknown`.
+  approved-snapshot request-binding results: `Supported`, `Unsupported`, or
+  `Unknown`. Missing capabilities default to `Unknown`.
   `AssignmentCapabilities::gh_aw_0_93_5()` reports exact-target support only
-  for the restricted numeric/triggering, single-repository path tested here.
-  It reports immutable-task authority as `Unsupported`.
+  for the restricted single-repository path tested here. Snapshot support
+  requires the complete trusted configuration, not an agent message.
+  The original `immutable_task` result remains `Unsupported` for this platform.
 - `handoff(transport, request)` blocks before `assign` unless both capabilities
-  are `Supported`. It returns the blocked capability and its status.
+  required by the revised contract are `Supported`. It returns the blocked
+  capability and its status. A transport must use the bound configuration;
+  declaring support does not prove that it does so.
 - `assign` returns `Accepted`, `NotAssigned`, or `Unknown`. Unknown outcomes
-  pass through without retries. Future claims code must reconcile them.
+  pass through without retries. Shared claims reconcile them against trusted
+  actual-state evidence before any bounded recovery attempt.
 
-There is no production GitHub assignment transport, CLI command, claim engine
-or installed workflow in this proof. A fake transport's supported result does
-not confer a capability on gh-aw or prove an actual assignment.
+Shared claims preserve repository-wide serialization across manual and automatic
+routes, external receipt provenance, duplicate checks, capacity limits, and
+bounded recovery. Receipt version `2` records the complete approved contract,
+target, contract hash, main revision, workflow run and attempt number.
+Journal validation rejects a substituted snapshot or inconsistent hash/target.
+Old receipts without the snapshot fail closed; do not convert uncertain attempts
+into new claims without verified recovery evidence.
 
-### Owner decision
+Before a durable claim and immediately before assignment, authorization checks
+the request against fresh protected-main declarations and approval evidence.
+The final read must retain the same approval receipt. Body/spec read failures,
+changed hashes, disabled applicable gates and unavailable capacity block the call.
+A failed final check keeps the attempt and records `NotAssigned`. Later
+reconciliation checks live hashes even when an existing assignment or PR is found.
+Verified terminal completion can still close an attempt and release capacity
+after scope drift. This bookkeeping cannot authorize another assignment.
 
-Keep #42's assignment integration and #41's workflow rollout blocked.
-The owner must approve a follow-up that proves a snapshot-authoritative
-handoff, or explicitly revise spec 0010 to accept the weaker, advisory-prompt
-contract and its mutable-context risk. A different API or provider is not an
-implicit fallback. Do not mark the full handoff supported, enroll tasks, change
-the manual owner-label route, or activate the coordinator from this proof.
-No live or paid validation is authorized here.
+An edit after the final read can still reach the builder. Rust tests simulate an
+edit in that interval: the outgoing request retains the approved snapshot, and
+later reconciliation blocks on the changed hash. The pinned handler proof covers
+body and comment changes without claiming atomic checks or remote isolation.
+
+There is no production GitHub assignment transport, CLI command or installed
+coordinator workflow in this change. A fake transport's supported result does
+not confer a capability on gh-aw or prove an actual assignment. Slice C must
+connect trusted state reads, durable storage and this bounded configuration to
+the pinned handler, preserving the shared lock through the assignment call.
+
+This implementation enrolls no tasks, changes no installed workflow or manual
+owner-label approval policy, and authorizes no live or paid validation.
+Workflow wiring, migration enrollment, rollout limits and activation require
+their separate owner approvals. A different API or provider is not an implicit
+fallback. Human review and merge remain required.
