@@ -32,7 +32,7 @@ fn unknown_and_unsupported_capabilities_block_before_transport() {
         Capability::Unsupported,
         Capability::Unknown,
     ] {
-        for immutable_task in [
+        for approved_snapshot in [
             Capability::Supported,
             Capability::Unsupported,
             Capability::Unknown,
@@ -40,13 +40,14 @@ fn unknown_and_unsupported_capabilities_block_before_transport() {
             let transport = FakeAssignment {
                 capabilities: AssignmentCapabilities {
                     exact_target,
-                    immutable_task,
+                    approved_snapshot,
+                    immutable_task: Capability::Unsupported,
                 },
                 calls: RefCell::default(),
                 outcome: AssignmentOutcome::Accepted,
             };
             let result = handoff(&transport, &request);
-            if exact_target == Capability::Supported && immutable_task == Capability::Supported {
+            if exact_target == Capability::Supported && approved_snapshot == Capability::Supported {
                 assert_eq!(result, Ok(AssignmentOutcome::Accepted));
                 assert_eq!(*transport.calls.borrow(), vec![request.clone()]);
             } else {
@@ -58,15 +59,52 @@ fn unknown_and_unsupported_capabilities_block_before_transport() {
 }
 
 #[test]
-fn pinned_handoff_blocks_even_with_an_exact_target() {
+fn pinned_handoff_supports_request_binding_but_not_context_isolation() {
     let transport = FakeAssignment {
         capabilities: AssignmentCapabilities::gh_aw_0_93_5(),
         calls: RefCell::default(),
         outcome: AssignmentOutcome::Accepted,
     };
     let request = AssignmentRequest::from_approved_snapshot(CONTRACT, REVISION).unwrap();
+    assert_eq!(
+        transport.capabilities.immutable_task,
+        Capability::Unsupported
+    );
+    assert_eq!(
+        handoff(&transport, &request),
+        Ok(AssignmentOutcome::Accepted)
+    );
+    assert_eq!(*transport.calls.borrow(), vec![request]);
+}
+
+#[test]
+fn missing_capabilities_fail_closed() {
+    let transport = FakeAssignment {
+        capabilities: AssignmentCapabilities::default(),
+        calls: RefCell::default(),
+        outcome: AssignmentOutcome::Accepted,
+    };
+    let request = AssignmentRequest::from_approved_snapshot(CONTRACT, REVISION).unwrap();
     assert!(handoff(&transport, &request).is_err());
     assert!(transport.calls.borrow().is_empty());
+}
+
+#[test]
+fn configured_handoff_matches_the_pinned_handler_proof() {
+    let request = AssignmentRequest::from_approved_snapshot(CONTRACT, REVISION).unwrap();
+    let expected: serde_json::Value =
+        serde_json::from_str(include_str!("fixtures/assignment-handoff/config.json")).unwrap();
+    assert_eq!(
+        serde_json::to_value(request.gh_aw_config()).unwrap(),
+        expected
+    );
+    assert_eq!(request.approved_contract(), CONTRACT);
+    assert_eq!(
+        AssignmentRequest::from_approved_snapshot(&CONTRACT.replace('\n', "\r\n"), REVISION)
+            .unwrap()
+            .gh_aw_config(),
+        request.gh_aw_config()
+    );
 }
 
 #[test]
@@ -94,6 +132,7 @@ fn request_uses_only_the_approved_contract_and_main_revision() {
 fn invalid_contracts_and_revisions_cannot_form_requests() {
     for contract in [
         CONTRACT.replace("issue = 17", "issue = 0"),
+        CONTRACT.replace("issue = 17", "issue = 9007199254740992"),
         CONTRACT.replace("implementation", "planning_tracker"),
         CONTRACT.replace("approved offline", "unapproved live"),
         format!("{CONTRACT}\nunknown = true\n"),
@@ -110,7 +149,8 @@ fn unknown_assignment_outcomes_are_not_success_or_retried() {
     let transport = FakeAssignment {
         capabilities: AssignmentCapabilities {
             exact_target: Capability::Supported,
-            immutable_task: Capability::Supported,
+            approved_snapshot: Capability::Supported,
+            immutable_task: Capability::Unsupported,
         },
         calls: RefCell::default(),
         outcome: AssignmentOutcome::Unknown,
