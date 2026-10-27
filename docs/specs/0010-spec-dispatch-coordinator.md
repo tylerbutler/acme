@@ -136,6 +136,11 @@ explicit approval.
 
 ## Human-only authority
 
+The proposed [GitHub claim-store contract](0011-github-claim-store.md) defines
+the concrete journal, authenticated provenance and non-expiring ownership
+boundary for #64. It preserves the controls above. Its merge approves a design,
+not an implemented store, installation or activation.
+
 The coordinator cannot approve or merge PRs, enqueue them for automatic merge,
 relax required checks, approve privileged CI runs, change secrets, provision
 repositories, publish releases or enable deferred modules. It reports those

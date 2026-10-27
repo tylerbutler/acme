@@ -232,6 +232,19 @@ Workflow wiring, migration enrollment, rollout limits and activation require
 their separate owner approvals. A different API or provider is not an implicit
 fallback. Human review and merge remain required.
 
+## Proposed production claim store (#64)
+
+[Spec 0011](../../docs/specs/0011-github-claim-store.md) proposes a protected Git
+journal, attested entry provenance and non-expiring ownership shared by both
+routes. Only the original producer may release settled ownership. Unknown
+assignments and orphaned owners block dispatch; workflow cancellation or age
+does not permit takeover.
+
+Production storage and exclusion remain unimplemented. The mutex-backed claim
+tests do not prove this boundary. Spec merge does not complete #64 or its draft
+#70, wire either route, authorize recovery or activate the coordinator.
+The read-only adapter below does not supply a lock or termination proof.
+
 ## Read-only GitHub state adapter (#65)
 
 `acme::github_state::GitHubStateReader` implements `claims::GitHubState`.
