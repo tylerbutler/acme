@@ -86,7 +86,7 @@ impl<C: GitHubClient> GitHubStateReader<C> {
         Err(format!("{endpoint}: pagination limit reached"))
     }
 
-    fn branch(&self, prefix: &str) -> Result<String, String> {
+    pub(crate) fn branch(&self, prefix: &str) -> Result<String, String> {
         let branch = self.get(&format!("{prefix}/branches/main"))?;
         if text(&branch, "/name")? != "main" || branch["protected"] != true {
             return Err("main is not protected".to_owned());
@@ -98,7 +98,12 @@ impl<C: GitHubClient> GitHubStateReader<C> {
         Ok(revision.to_owned())
     }
 
-    fn ancestor(&self, prefix: &str, ancestor: &str, revision: &str) -> Result<(), String> {
+    pub(crate) fn ancestor(
+        &self,
+        prefix: &str,
+        ancestor: &str,
+        revision: &str,
+    ) -> Result<(), String> {
         if !valid_revision(ancestor) {
             return Err("invalid merge revision".to_owned());
         }
@@ -134,7 +139,7 @@ impl<C: GitHubClient> GitHubStateReader<C> {
         Ok(pr)
     }
 
-    fn file_approval(
+    pub(crate) fn file_approval(
         &self,
         repository: &str,
         path: &str,

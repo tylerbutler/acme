@@ -1,0 +1,12 @@
+{
+  "name": "acme-claim-attestation",
+  "version": "1.0.0",
+  "private": true,
+  "engines": { "node": "24.x" },
+  "dependencies": {
+    "@actions/attest": "3.2.0"
+  },
+  "overrides": {
+    "@sigstore/core": "3.2.1"
+  }
+}

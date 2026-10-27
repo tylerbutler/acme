@@ -1,5 +1,6 @@
 pub mod assignment;
 pub mod catalog;
+pub mod claim_store;
 pub mod claims;
 pub mod config;
 pub mod coordinator;

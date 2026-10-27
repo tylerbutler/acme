@@ -1,3 +1,4 @@
+use crate::claims::{AttemptId, ClaimSession};
 use crate::dispatch::{DispatchDeclaration, TaskKind, content_sha256};
 use serde::Serialize;
 
@@ -137,7 +138,49 @@ pub enum AssignmentOutcome {
 
 pub trait AssignmentTransport {
     fn capabilities(&self) -> AssignmentCapabilities;
-    fn assign(&self, request: &AssignmentRequest) -> AssignmentOutcome;
+
+    /// Consume the permit synchronously. Do not retry, queue, or detach the assignment.
+    /// Return a known outcome only after all request processes have stopped.
+    fn assign(&self, permit: AssignmentPermit<'_>) -> AssignmentOutcome;
+}
+
+pub struct AssignmentPermit<'a> {
+    request: &'a AssignmentRequest,
+    attempt: &'a AttemptId,
+    generation: String,
+    _session: &'a mut dyn ClaimSession,
+}
+
+pub struct AssignmentReturn {
+    generation: String,
+    outcome: AssignmentOutcome,
+}
+
+impl AssignmentReturn {
+    pub(crate) fn generation(&self) -> &str {
+        &self.generation
+    }
+
+    pub(crate) const fn outcome(&self) -> &AssignmentOutcome {
+        &self.outcome
+    }
+}
+
+impl AssignmentPermit<'_> {
+    #[must_use]
+    pub const fn request(&self) -> &AssignmentRequest {
+        self.request
+    }
+
+    #[must_use]
+    pub const fn attempt(&self) -> &AttemptId {
+        self.attempt
+    }
+
+    #[must_use]
+    pub fn generation(&self) -> &str {
+        &self.generation
+    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -146,11 +189,28 @@ pub struct AssignmentBlocked {
     pub status: Capability,
 }
 
-/// This capability gate does not replace approval checks, claim serialization, or final eligibility checks.
+/// Call only after final eligibility checks. Keep the original session held until the handler returns.
 pub fn handoff(
     transport: &impl AssignmentTransport,
     request: &AssignmentRequest,
-) -> Result<AssignmentOutcome, AssignmentBlocked> {
-    transport.capabilities().check_required()?;
-    Ok(transport.assign(request))
+    attempt: &AttemptId,
+    session: &mut dyn ClaimSession,
+) -> Result<AssignmentOutcome, String> {
+    transport
+        .capabilities()
+        .check_required()
+        .map_err(|error| format!("unsupported assignment capability: {}", error.capability))?;
+    let generation = session.reserve_assignment(attempt, request)?;
+    let returned_generation = generation.clone();
+    let outcome = transport.assign(AssignmentPermit {
+        request,
+        attempt,
+        generation,
+        _session: &mut *session,
+    });
+    session.assignment_returned(AssignmentReturn {
+        generation: returned_generation,
+        outcome: outcome.clone(),
+    })?;
+    Ok(outcome)
 }

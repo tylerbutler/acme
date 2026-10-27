@@ -1,5 +1,6 @@
 use acme::assignment::{
-    AssignmentCapabilities, AssignmentOutcome, AssignmentRequest, AssignmentTransport, Capability,
+    AssignmentCapabilities, AssignmentOutcome, AssignmentPermit, AssignmentRequest,
+    AssignmentTransport, Capability,
 };
 use acme::claims::{
     ActualWork, AttemptResolution, ClaimBlock, ClaimSession, ClaimStore, GitHubSnapshot,
@@ -141,6 +142,25 @@ fn stored(receipt: Receipt) -> StoredReceipt {
 }
 
 impl ClaimSession for FakeSession<'_> {
+    fn assignment_returned(&mut self, _: acme::assignment::AssignmentReturn) -> Result<(), String> {
+        Ok(())
+    }
+    fn arm_assignment(&mut self, _: &acme::claims::AttemptId) -> Result<(), String> {
+        Ok(())
+    }
+
+    fn reserve_assignment(
+        &mut self,
+        _: &acme::claims::AttemptId,
+        _: &AssignmentRequest,
+    ) -> Result<String, String> {
+        Ok("fake-held-generation".to_owned())
+    }
+
+    fn release(&mut self) -> Result<(), String> {
+        Ok(())
+    }
+
     fn load(&mut self) -> Result<Vec<StoredReceipt>, String> {
         Ok(self.0.receipts.clone())
     }
@@ -207,8 +227,8 @@ impl AssignmentTransport for FakeAssignment {
         self.capabilities
     }
 
-    fn assign(&self, request: &AssignmentRequest) -> AssignmentOutcome {
-        self.calls.lock().unwrap().push(request.clone());
+    fn assign(&self, permit: AssignmentPermit<'_>) -> AssignmentOutcome {
+        self.calls.lock().unwrap().push(permit.request().clone());
         self.outcome.clone()
     }
 }

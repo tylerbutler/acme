@@ -190,11 +190,14 @@ interface is incapable of meeting the original contract.
   for the restricted single-repository path tested here. Snapshot support
   requires the complete trusted configuration, not an agent message.
   The original `immutable_task` result remains `Unsupported` for this platform.
-- `handoff(transport, request)` blocks before `assign` unless both capabilities
-  required by the revised contract are `Supported`. It returns the blocked
-  capability and its status. A transport must use the bound configuration;
-  declaring support does not prove that it does so.
-- `assign` returns `Accepted`, `NotAssigned`, or `Unknown`. Unknown outcomes
+- `handoff(transport, request, attempt, session)` requires a durably armed
+  pending attempt and the original held session. Use `claims::reconcile` for
+  authorization and the final fresh approval check. The handoff checks required
+  capabilities and current ownership before it consumes a non-cloneable permit.
+  A request alone cannot invoke `AssignmentTransport::assign`.
+- `assign(permit)` runs synchronously and returns `Accepted`, `NotAssigned`, or `Unknown`.
+  The handler must not retry, queue or detach an assignment. A known outcome
+  requires all request processes to have stopped. Unknown outcomes
   pass through without retries. Shared claims reconcile them against trusted
   actual-state evidence before any bounded recovery attempt.
 
@@ -232,18 +235,124 @@ Workflow wiring, migration enrollment, rollout limits and activation require
 their separate owner approvals. A different API or provider is not an implicit
 fallback. Human review and merge remain required.
 
-## Proposed production claim store (#64)
+## GitHub claim store (#64)
 
-[Spec 0011](../../docs/specs/0011-github-claim-store.md) proposes a protected Git
-journal, attested entry provenance and non-expiring ownership shared by both
-routes. Only the original producer may release settled ownership. Unknown
-assignments and orphaned owners block dispatch; workflow cancellation or age
-does not permit takeover.
+`acme::claim_store::GitHubClaimStore` implements the journal and ownership
+protocol in [spec 0011](../../docs/specs/0011-github-claim-store.md).
+`GhJobClient` is its separate job-token client. It never uses the reader's
+user token or local CLI credentials. The store is a library adapter, not an
+installed workflow or a CLI command. `GitHubClaimStore::production` constructs
+the concrete job client, signing helper and verifier from absolute tool paths.
+Only public user-owned repositories on github.com are supported. Repository
+metadata must explicitly report `private: false` and `visibility: "public"`
+before signing or acquisition. Missing or conflicting visibility fails closed.
 
-Production storage and exclusion remain unimplemented. The mutex-backed claim
-tests do not prove this boundary. Spec merge does not complete #64 or its draft
-#70, wire either route, authorize recovery or activate the coordinator.
-The read-only adapter below does not supply a lock or termination proof.
+The adapter loads `factory/dispatch/claim-store.json` from authenticated,
+owner-merged protected main. No policy, genesis, ruleset or workflow is installed
+by this implementation. Missing installation data blocks acquisition.
+The supported version-1 policy fields are exactly those in spec 0011.
+The adapter verifies repository numeric identities and all three effective
+permanence rules, including their active source rulesets and empty bypass lists.
+Each full load repeats these checks, including at the assignment boundary.
+Policy and workflow bytes must exactly match their approving merges, without
+line-ending normalization.
+Historical policies need their own owner approval and the same installation
+identity. Owner-approved budget changes apply to the current session.
+The adapter never infers or replaces the genesis.
+
+Each load walks immutable commit parents to the approved genesis. It checks
+complete, non-truncated trees and blobs, exact two-file additions, contiguous
+sequences, strict JSON, unique operations and ownership transitions.
+Receipts remain version 2 and oldest-first. Duplicate JSON keys are rejected at
+every depth. Entry signatures bind the original UTF-8 bytes and final LF, not
+parsed or canonicalized JSON.
+
+Appending uses one `createCommitOnBranch` mutation with `expectedHeadOid`.
+Only a complete fresh readback of the exact entry, bundle and parent acknowledges
+the operation. The adapter does not retry mutations. A committed-then-timeout
+response can be resolved by readback; an unresolved write poisons the producer.
+Owner-approved entry, byte and API-request budgets apply to complete loads and
+appends. Acquisition requires five available entries for acquisition, pending,
+arm, outcome and release. Each later write preserves entry capacity for its
+settled path, and the permit check requires outcome and release capacity.
+Request failures or byte/API-budget exhaustion can still retain ownership.
+Exhaustion never yields partial history. Tool processes also have a
+60-second limit and bounded output; the job API client caps each response at
+16 MiB.
+
+### Signing and verification tools
+
+The deterministic helper is `scripts/claim-attestation/sign.cjs`. Its lockfile
+pins `@actions/attest` 3.2.0 and all dependencies. Node.js 24 is required.
+`@sigstore/core` is overridden to 3.2.1 to fix GHSA-jfc7-64v2-mr8c; the signing
+API used by the SDK is retained. The dependency audit is clean.
+Install these reviewed dependencies with `npm ci --ignore-scripts` in that
+directory before a future owner-approved installation. The adapter never runs
+an install command. Missing or unsupported tools fail closed.
+
+The helper receives exact entry bytes on stdin, plus job identity in an isolated
+environment. It receives neither `GH_PAT` nor `GH_TOKEN`. It signs one
+`entry.json` SHA-256 subject with the custom claim predicate type and an empty
+predicate. It uses public
+Sigstore and skips optional GitHub attestation-API storage; the saved bundle in
+the Git commit is the durable record.
+
+Verification requires GitHub CLI **2.102.0**. It uses the saved bundle, exact
+repository and signer workflow, source and signer digests, main ref, custom
+predicate, SHA-256 and hosted-runner policy. No identity, digest or witnessed-time
+check is disabled. The adapter derives provenance only from the verified
+certificate and requires verified timestamps. It checks the exact SAN, owner
+URI, immutable repository and owner IDs, issuer, source, signer, top-level build
+configuration, hosted runner and exact run/attempt invocation URI. Actions metadata and historical
+owner merges of both policy and workflow must independently agree.
+Caller-controlled predicate metadata is not provenance.
+
+### Ownership and guarded assignment
+
+Each store instance has a fresh process nonce and can acquire only once.
+Future multi-issue runners must create a new store for each acquisition. They
+must not restore or reuse an earlier producer.
+The acquisition entry digest is its generation. There is no resume, expiry,
+heartbeat, takeover, reset command or release on destruction.
+Manual and automatic reconciliation use the same adapter and protocol.
+
+Reconciliation durably records `Pending`, arms its complete attempt binding,
+rechecks fresh approval/scope/gates/capacity, verifies ownership and protection,
+and consumes one session-bound permit in the synchronous transport.
+Only `handoff` creates the one-use completion value after the synchronous
+transport returns. Caller-written receipts cannot settle an unreturned
+reservation or replace an unknown result.
+Known outcomes become durable before explicit release. A failed final check
+records `NotAssigned` and can release after confirmation. A read-only preflight
+block can release settled ownership. An unknown assignment or unresolved write
+retains ownership; no later producer may adopt it. Unknown ownership has no
+recovery write in this protocol.
+
+Release closes the old producer before its mutation is sent. A lost release
+acknowledgement never makes that producer usable again. A new producer may
+acquire only when a fully verified journal proves release.
+
+### Offline evidence and remaining installation gates
+
+```sh
+cargo test --locked --test claim_store_process --test github_claim_store --test claims --test assignment --test github_state
+python3 -m unittest discover -s tests -p test_claim_attestation.py
+just check
+```
+
+Tests exercise the production store and certificate parser with fake GitHub and
+tool-process boundaries, including CAS races, same-run nonces, historical
+approvals, pagination, corrupted objects, forged provenance, unknown outcomes,
+uncertain writes, release timeouts and guarded reconciliation on both routes.
+The Node helper is tested with a fake SDK boundary and no credentials or network.
+
+These are offline protocol tests, not hosted-platform evidence. Effective live
+protection, certificate issuance, tool installation and the actual assignment
+handler's lifetime still need separate owner-approved validation. The production
+handler remains #66; route wiring remains #68. Neither workflow is installed or
+changed here. Keep coordinator activation off, enrollment unchanged and #41
+open for its remaining slices. There is no live assignment transport or
+orphan-owner recovery mechanism in this change.
 
 ## Read-only GitHub state adapter (#65)
 
