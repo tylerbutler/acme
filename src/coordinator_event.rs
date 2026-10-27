@@ -48,10 +48,8 @@ pub struct DispatchGates {
     pub assignment_enabled: Option<bool>,
 }
 
-pub const fn allow_automatic_dispatch(
-    config: &CoordinatorConfig,
-    gates: &DispatchGates,
-) -> bool {
+#[must_use]
+pub const fn allow_automatic_dispatch(config: &CoordinatorConfig, gates: &DispatchGates) -> bool {
     config.automatic_dispatch
         && config.max_active_tasks > 0
         && config.max_assignments_per_reconciliation > 0

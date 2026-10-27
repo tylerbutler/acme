@@ -1,10 +1,10 @@
-use acme::coordinator_event::{
-    CoordinatorEvent, DispatchGates, EventContext, EventKind, Rejection,
-    allow_automatic_dispatch, classify_event,
-};
 use acme::CoordinatorConfig;
+use acme::coordinator_event::{
+    CoordinatorEvent, DispatchGates, EventContext, EventKind, Rejection, allow_automatic_dispatch,
+    classify_event,
+};
 
-fn event(kind: EventKind) -> EventContext<'static> {
+const fn event(kind: EventKind) -> EventContext<'static> {
     EventContext {
         kind,
         repository: "tylerbutler/acme",
@@ -34,10 +34,7 @@ fn accepts_only_protected_main_reconciliation_events() {
     build.workflow_repository = Some("tylerbutler/acme");
     build.workflow_branch = Some("main");
     build.workflow_conclusion = Some("success");
-    assert_eq!(
-        classify_event(&build),
-        Ok(CoordinatorEvent::Automatic)
-    );
+    assert_eq!(classify_event(&build), Ok(CoordinatorEvent::Automatic));
 
     assert_eq!(
         classify_event(&event(EventKind::PullRequest)),
@@ -45,33 +42,21 @@ fn accepts_only_protected_main_reconciliation_events() {
     );
     let mut foreign = event(EventKind::Push);
     foreign.ref_name = "refs/heads/feature";
-    assert_eq!(
-        classify_event(&foreign),
-        Err(Rejection::UntrustedRef)
-    );
+    assert_eq!(classify_event(&foreign), Err(Rejection::UntrustedRef));
 }
 
 #[test]
 fn owner_ready_label_is_the_only_manual_issue_trigger() {
     let mut manual = event(EventKind::IssueLabeled);
     manual.issue_label = Some("ready-for-agent");
-    assert_eq!(
-        classify_event(&manual),
-        Ok(CoordinatorEvent::Manual)
-    );
+    assert_eq!(classify_event(&manual), Ok(CoordinatorEvent::Manual));
 
     manual.issue_label = Some("needs-spec");
-    assert_eq!(
-        classify_event(&manual),
-        Err(Rejection::UnsupportedEvent)
-    );
+    assert_eq!(classify_event(&manual), Err(Rejection::UnsupportedEvent));
 
     manual.issue_label = Some("ready-for-agent");
     manual.actor = "copilot";
-    assert_eq!(
-        classify_event(&manual),
-        Err(Rejection::UnauthorizedActor)
-    );
+    assert_eq!(classify_event(&manual), Err(Rejection::UnauthorizedActor));
 }
 
 #[test]
@@ -81,23 +66,14 @@ fn workflow_run_requires_a_completed_build_on_protected_main() {
     run.workflow_repository = Some("tylerbutler/acme");
     run.workflow_branch = Some("main");
     run.workflow_conclusion = Some("success");
-    assert_eq!(
-        classify_event(&run),
-        Ok(CoordinatorEvent::Automatic)
-    );
+    assert_eq!(classify_event(&run), Ok(CoordinatorEvent::Automatic));
 
     run.workflow_branch = Some("pull/123/merge");
-    assert_eq!(
-        classify_event(&run),
-        Err(Rejection::UntrustedWorkflow)
-    );
+    assert_eq!(classify_event(&run), Err(Rejection::UntrustedWorkflow));
 
     run.workflow_branch = Some("main");
     run.workflow_conclusion = Some("in_progress");
-    assert_eq!(
-        classify_event(&run),
-        Err(Rejection::UntrustedWorkflow)
-    );
+    assert_eq!(classify_event(&run), Err(Rejection::UntrustedWorkflow));
 }
 
 #[test]
@@ -139,15 +115,15 @@ fn automatic_dispatch_requires_every_gate_and_positive_limits() {
     for invalid in [
         CoordinatorConfig {
             automatic_dispatch: false,
-            ..config.clone()
+            ..config
         },
         CoordinatorConfig {
             max_active_tasks: 0,
-            ..config.clone()
+            ..config
         },
         CoordinatorConfig {
             max_assignments_per_reconciliation: 0,
-            ..config.clone()
+            ..config
         },
         CoordinatorConfig {
             max_attempts: 0,
