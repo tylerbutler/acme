@@ -1005,3 +1005,34 @@ fn irrelevant_historical_pr_links_are_not_required_for_capacity() {
     assert_eq!(snapshot.work, Evidence::Known(vec![]));
     assert_eq!(decision(&snapshot, 17), Eligibility::Eligible);
 }
+
+#[test]
+fn a_later_manual_or_commit_closure_invalidates_historical_pr_completion() {
+    for closer in [Value::Null, json!({"__typename":"Commit"})] {
+        let (mut fake, request) = accepted_prerequisite();
+        fake.responses.get_mut("closed:16:null").unwrap()["data"]["repository"]["issue"]["timelineItems"]["nodes"]
+            .as_array_mut().unwrap().push(json!({"id":"reclosed","closer":closer}));
+        let snapshot = GitHubStateReader::new(fake).observe(&request).unwrap();
+        assert_eq!(
+            decision(&snapshot, 17),
+            Eligibility::Blocked(ReasonCode::PrerequisiteNotMerged)
+        );
+    }
+}
+
+#[test]
+fn the_latest_closure_page_controls_completion() {
+    let (mut fake, request) = accepted_prerequisite();
+    fake.responses.get_mut("closed:16:null").unwrap()["data"]["repository"]["issue"]["timelineItems"]
+        ["pageInfo"] = json!({"hasNextPage":true,"endCursor":"later"});
+    let mut latest = closed(None);
+    latest["data"]["repository"]["issue"]["timelineItems"]["nodes"] =
+        json!([{"id":"reclosed","closer":null}]);
+    fake.responses
+        .insert("closed:16:\"later\"".to_owned(), latest);
+    let snapshot = GitHubStateReader::new(fake).observe(&request).unwrap();
+    assert_eq!(
+        decision(&snapshot, 17),
+        Eligibility::Blocked(ReasonCode::PrerequisiteNotMerged)
+    );
+}

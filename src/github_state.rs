@@ -246,6 +246,8 @@ impl<C: GitHubClient> GitHubStateReader<C> {
                     return Err("duplicate issue closure event".to_owned());
                 }
                 let closer = event.get("closer").ok_or("missing closure origin")?;
+                // A later closure replaces the old implementation binding.
+                merges.clear();
                 if closer.is_null() {
                     continue;
                 }
