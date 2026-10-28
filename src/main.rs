@@ -26,6 +26,9 @@ fn run() -> Result<(), String> {
     if command == "render" {
         return render(args);
     }
+    if command == "sync" {
+        return sync(args);
+    }
     if command != "doctor" {
         return Err(format!("acme {command} is not implemented."));
     }
@@ -61,6 +64,41 @@ fn run() -> Result<(), String> {
     } else {
         Err("doctor found drift or could not complete all checks.".to_owned())
     }
+}
+
+fn sync(mut args: impl Iterator<Item = String>) -> Result<(), String> {
+    let mut config_path = None;
+    let mut check = false;
+    while let Some(argument) = args.next() {
+        match argument.as_str() {
+            "--check" if !check => check = true,
+            "--check" => return Err("--check must be specified once.".to_owned()),
+            "--config" => {
+                let path = args
+                    .next()
+                    .filter(|path| !path.starts_with("--") && !path.is_empty())
+                    .ok_or("--config requires a path.")?;
+                if config_path.replace(PathBuf::from(path)).is_some() {
+                    return Err("--config must be specified once.".to_owned());
+                }
+            }
+            _ => return Err(format!("unknown sync argument: {argument}")),
+        }
+    }
+    let config_path = config_path.unwrap_or_else(|| PathBuf::from("factory/factory.toml"));
+    let config = FactoryConfig::load(&config_path).map_err(|error| error.to_string())?;
+    let root =
+        env::current_dir().map_err(|error| format!("failed to get current directory: {error}"))?;
+    let report =
+        acme::render::sync_repository(&config, &root, check).map_err(|error| error.to_string())?;
+    print!("{report}");
+    if check && !report.is_clean() {
+        return Err("sync drift detected; run acme sync after review.".to_owned());
+    }
+    if report.is_clean() {
+        println!("Sync is clean.");
+    }
+    Ok(())
 }
 
 fn render(mut args: impl Iterator<Item = String>) -> Result<(), String> {

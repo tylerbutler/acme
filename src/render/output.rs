@@ -63,7 +63,7 @@ pub fn render_to_directory(config: &FactoryConfig, destination: &Path) -> Result
     Ok(())
 }
 
-fn render_output(output: &PlannedOutput) -> Result<Vec<u8>, RenderError> {
+pub(super) fn render_output(output: &PlannedOutput) -> Result<Vec<u8>, RenderError> {
     let substitutions = match &output.inputs {
         TemplateInputs::Static => Vec::new(),
         TemplateInputs::Ci {
