@@ -49,7 +49,10 @@ fn plan_is_stable_and_orders_modules_paths_and_template_inputs() {
         ["build_cloud", "intake", "merge", "spec"]
     );
     let ci = plan.outputs.last().unwrap();
-    assert_eq!(ci.template, include_bytes!("../modules/ci/assets/ci.yml"));
+    assert_eq!(
+        ci.template,
+        include_bytes!("../modules/ci/assets/ci.yml.tmpl")
+    );
     let TemplateInputs::Ci {
         required_check,
         steps,

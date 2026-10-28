@@ -11,7 +11,8 @@ The CLI renders only approved config.
 
 The factory is hand-built. `doctor` is implemented as a read-only check of
 supported local assets and GitHub settings. It reads and validates the M1
-config before checks. `init`, `render` and `sync` are not implemented, and the
+config before checks. `render --output DIR` writes the deterministic M2 inventory
+to a new or empty directory. `init` and `sync` are not implemented, and the
 binary must not report success for them. Explicit `doctor --fix` repairs
 supported remote drift after plan validation and then runs fresh checks.
 M3 rendering is the current priority. Automatic dispatch (specs 0010 and 0011)
@@ -42,6 +43,7 @@ Architecture decisions are in `docs/adr/`.
 ```sh
 cargo run -- doctor
 cargo run -- doctor --config path/to/factory.toml
+cargo run --bin acme -- render --output /tmp/acme-render
 just build
 just test
 just lint

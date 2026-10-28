@@ -1,5 +1,12 @@
 .github/workflows/*.lock.yml linguist-generated=true
 
+modules/**/assets/** text eol=lf
+.github/workflows/ci.yml text eol=lf
+.github/actions/setup-rust/action.yml text eol=lf
+.github/rulesets/main.json text eol=lf
+.github/labels.yml text eol=lf
+.github/ISSUE_TEMPLATE/*.yml text eol=lf
+
 .agents/skills/** linguist-vendored=true
 .claude/** linguist-vendored=true
 skills/** linguist-vendored=true

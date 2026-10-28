@@ -6,9 +6,9 @@ It will not call an LLM. An agent skill will conduct the init interview.
 
 **Status: M0 factory loop verified.** The factory is hand-built. `doctor` runs
 read-only checks against the local module assets and the GitHub repository named
-in the config. It requires an authenticated `gh` CLI. `init`, `render` and `sync`
-are not implemented and fail explicitly. M3 rendering is the next milestone;
-automatic dispatch is paused.
+in the config. It requires an authenticated `gh` CLI. `render` writes the
+deterministic M2 inventory to a new or empty directory. `init` and `sync`
+are not implemented and fail explicitly. Automatic dispatch is paused.
 
 ## Development
 
@@ -17,6 +17,7 @@ just build
 just check
 cargo run -- doctor
 cargo run -- doctor --config path/to/factory.toml
+cargo run --bin acme -- render --output /tmp/acme-render
 ```
 
 Rust is pinned in `rust-toolchain.toml`. Python 3 is used for the bootstrap
@@ -43,6 +44,26 @@ Fix does not provision secrets or change workflow enablement, variable gates,
 staging, budgets, assignments or issue state. It never runs the bootstrap script.
 See the [owner-only M2 acceptance procedure](docs/bootstrap.md#owner-only-m2-acceptance).
 Implementation and fake-state tests do not establish the live M2 exit check.
+
+### Local rendering
+
+```sh
+acme render --output /tmp/acme-render
+acme render --config path/to/factory.toml --output /tmp/acme-preview
+```
+
+Render reads `factory/factory.toml` by default and validates the complete plan
+before writing. The destination must be absent or empty. Render rejects
+symlinked destinations and ancestors. An I/O failure can leave partial output;
+inspect it and use a fresh destination to retry.
+
+The binary embeds its templates and does not need the source checkout or `gh`.
+It writes only the CI workflow, Rust setup action, labels, issue forms and
+ruleset fixture, with LF line endings. It does not execute configured commands,
+call GitHub, compile gh-aw, render Intake or Build-cloud, or write ownership
+records. The golden tests compare every output byte with the reviewed M2 files.
+The bundled M2 assets remain fixed doctor fixtures; the two `.tmpl` assets
+supply the config-dependent render text.
 
 ### Agent comment style
 
