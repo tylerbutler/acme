@@ -7,7 +7,8 @@ It will not call an LLM. An agent skill will conduct the init interview.
 **Status: M0 factory loop verified.** The factory is hand-built. `doctor` runs
 read-only checks against the local module assets and the GitHub repository named
 in the config. It requires an authenticated `gh` CLI. `init`, `render` and `sync`
-are not implemented and fail explicitly.
+are not implemented and fail explicitly. M3 rendering is the next milestone;
+automatic dispatch is paused.
 
 ## Development
 

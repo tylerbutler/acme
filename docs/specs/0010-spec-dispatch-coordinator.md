@@ -1,6 +1,13 @@
 # Factory coordinator: spec-approved automatic dispatch
 
-**Status: proposed dispatch-assurance revision, not an enabled workflow.**
+**Status: paused by owner decision. Do not start new slices.**
+
+The renderer (M3) comes first. Merged code stays in place and off. Remaining
+children of #41 (#66-#69) are on hold. Revisit this spec only after M5, and
+only if manual `ready-for-agent` labeling is a real bottleneck. A revisit must
+first evaluate a simpler exclusion, such as an Actions concurrency group.
+
+**Earlier status: proposed dispatch-assurance revision, not an enabled workflow.**
 
 This revision requires human merge before implementation. Existing assignment
 code still blocks on unsupported immutable-task authority. This document does

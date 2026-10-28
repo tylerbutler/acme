@@ -14,6 +14,9 @@ supported local assets and GitHub settings. It reads and validates the M1
 config before checks. `init`, `render` and `sync` are not implemented, and the
 binary must not report success for them. Explicit `doctor --fix` repairs
 supported remote drift after plan validation and then runs fresh checks.
+M3 rendering is the current priority. Automatic dispatch (specs 0010 and 0011)
+is paused; do not extend the coordinator, claims or claim store unless the owner
+reprioritizes it. The `src/` dispatch modules stay as they are, unused.
 Read `factory/brief.md` and `docs/specs/0001-bootstrap.md` first.
 Read `docs/specs/0002-m1-config-contract.md` before M1 config, schema or manifest
 work. Implement only after the spec is merged and the owner approves the issue.

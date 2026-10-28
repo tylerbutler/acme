@@ -54,6 +54,11 @@ Do not claim that CODEOWNERS enforces `never-agent`.
 
 ## Next milestones
 
+M1 and M2 code is merged. M3 is the current priority. Merge the M3 spec, then
+build its slices in order: plan, render, sync, version pins. Automatic dispatch
+([spec 0010](0010-spec-dispatch-coordinator.md)) is paused and is not on the
+path to any milestone below.
+
 | Milestone | Deliverable | Exit check |
 | --- | --- | --- |
 | M1 | Rust config types, generated schema, module manifests | Schema validates this config |
