@@ -9,10 +9,12 @@ targets:
   - claude
   - copilot
 dependencies:
-  apm: []
   mcp: []
+  apm:
+    - tylerbutler/agent-marketplace/plugins/rust
 includes: auto
 scripts: {}
 devDependencies:
   apm:
     - obra/superpowers
+    - DietrichGebert/ponytail
