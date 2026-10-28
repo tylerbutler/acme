@@ -27,6 +27,8 @@ started with staged outputs. After the staged tests passed, the owner approved
 leaving Intake and Build-cloud enabled with live safe outputs. The repository
 variables remain kill switches. Only the owner can approve a build with the
 ready label; all merges remain human-controlled.
+Amendment: the owner may also assign Copilot directly. That route skips the
+Build-cloud workflow and its gates; it is still owner approval of one build.
 The owner initially declined budget caps, then approved 5000 AI credits per
 main agent run after the pinned firewall rejected the negative no-cap value.
 Monthly and daily budgets remain off. Staged runs still use AI credits.

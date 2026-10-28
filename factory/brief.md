@@ -20,8 +20,8 @@ Secrets and private holdout scenarios must never be changed or exposed by agents
 Use a 5000-AI-credit cap per main agent run. Do not configure monthly or daily
 budgets at this stage. The owner approved leaving Intake and Build-cloud enabled
 with live safe outputs and both variable gates on. Qualifying events can use
-paid inference. Only an owner-applied ready label can approve a build; human
-merge is still required.
+paid inference. Only the owner can approve a build, with the ready label or
+by direct Copilot assignment; human merge is still required.
 
 Do not implement the CLI or a second template repository in M0. Defer holdout,
 build-local, automated review, release and ops. Build schema, doctor, then the
@@ -34,7 +34,7 @@ The renderer is the product; finish it before other milestones.
 
 Automatic dispatch (specs 0010 and 0011) is paused. It saves one owner label
 per task but adds a large trust and maintenance surface. The owner-applied
-`ready-for-agent` label stays the only build approval. Revisit automatic
+`ready-for-agent` label and direct owner assignment stay the build approvals. Revisit automatic
 dispatch only after M5, and only if manual labeling is a real bottleneck.
 Start with the simplest exclusion that works, such as an Actions concurrency
 group, before a signed journal.

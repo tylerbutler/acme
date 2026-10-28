@@ -11,7 +11,7 @@ renderer fixtures, not a claim that the CLI exists.
 | Stage | Input | Output | Gate |
 | --- | --- | --- | --- |
 | Intake | Admin-opened issue | Labels and clarification comment | Goal, acceptance scenarios, non-goals |
-| Spec | Triaged issue and brief | Human-written spec | Owner adds `ready-for-agent` |
+| Spec | Triaged issue and brief | Human-written spec | Owner adds `ready-for-agent` or assigns Copilot |
 | Build-cloud | Approved issue and spec | Live assignment; one draft PR | Owner actor, ready label, explicit enablement |
 | CI | PR | `CI` status | fmt, Clippy, tests, config consistency |
 | Merge | Green PR | Main commit | Human merge, required CI, resolved threads |

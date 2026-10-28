@@ -83,7 +83,8 @@ the shared instruction source.
 The owner approved leaving Intake and Build-cloud enabled with live safe
 outputs and both variable gates set to `true`. Intake triages admin-opened
 issues. Build-cloud still requires the owner to add `ready-for-agent` to a
-specified issue. **These events can use paid AI credits.** Each main agent run
+specified issue. The owner can also assign Copilot directly, which skips
+Build-cloud and its gates. **These events can use paid AI credits.** Each main agent run
 has a 5000-AI-credit cap; monthly and daily budgets are off.
 Both authentication paths use `GH_PAT`. Inference and live assignment passed. See
 [the bootstrap guide](docs/bootstrap.md) before enabling anything.
