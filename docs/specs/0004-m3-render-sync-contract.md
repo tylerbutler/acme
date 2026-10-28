@@ -34,6 +34,31 @@ factory must keep working during implementation.
   pinned action SHAs, required check names and the configured CI commands.
   The unchanged post-M1 factory must reproduce its reviewed files byte for
   byte; do not normalize the fixtures to hide a mismatch.
+- Write LF line endings. Compare raw bytes. Golden tests must not depend on the
+  checkout's line-ending settings.
+
+## Config-to-output mapping
+
+Module assets become templates. Use plain placeholder substitution with no
+conditionals, loops in template text or code execution. The renderer builds
+lists, such as CI steps, in Rust and substitutes the rendered text. Template
+text that has no config field stays fixed and reviewed.
+
+| Config field | Output |
+| --- | --- |
+| `modules.ci.commands` | `run` steps in `.github/workflows/ci.yml`, in config order |
+| `modules.ci.required_checks` | CI job `name`; required status check contexts in `.github/rulesets/main.json` |
+| `modules.merge.required_approvals` | `required_approving_review_count` in the ruleset |
+| `modules.intake.enabled` | Presence of `.github/labels.yml` and the issue forms |
+
+Slice A must complete this table for every config-dependent byte. Where the
+config lacks data the output needs, such as CI step names, slice A proposes a
+schema change. Schema changes need human merge.
+
+The config and the live files disagree today: `ci.yml` runs the schema
+freshness check, but `modules.ci.commands` omits it. The live files are the
+reviewed source of truth. Slice A fixes the config to match them; it does not
+change the live files to match the config.
 
 ## Sync and ownership contract
 
@@ -57,7 +82,9 @@ factory must keep working during implementation.
   and overlapping outputs. Detect conflicts before mutation. Use safe file
   replacement; report I/O failures and partial application accurately.
   Never mark a failed sync complete in the ownership record.
-- A clean second sync has no diff, including the ownership record. Sync does
+- A clean second sync with the same binary has no diff, including the
+  ownership record. After an upgrade that changes no output, sync may change
+  only the recorded acme version. Sync does
   not call doctor `--fix`, compile gh-aw, change GitHub settings, assign work
   or merge a PR. Run read-only doctor separately to check installed settings.
 
@@ -82,14 +109,16 @@ a published release or change the live bootstrap flag to make tests pass.
    cycles, unsupported gates, colliding paths and unsafe paths fail before
    any write. Hand-built Intake and Build-cloud remain untouched.
 2. Rendering the unchanged factory into an empty temporary directory matches
-   every file in the M2 golden inventory byte for byte. A changed config
-   changes only the corresponding planned outputs.
-3. First sync adopts matching hand-built files. A second sync is a no-op.
+   every file in the M2 golden inventory byte for byte.
+3. Each mapped config field changes its output as expected. For example, an
+   added CI command adds exactly one step to `ci.yml`, and a changed required
+   check changes the job name and the ruleset context. No other bytes change.
+4. First sync adopts matching hand-built files. A second sync is a no-op.
    Check mode detects drift without changing files or bookkeeping.
-4. Removing a supported module removes only its recorded, unmodified outputs.
+5. Removing a supported module removes only its recorded, unmodified outputs.
    Modified owned files, conflicting unowned files, forged records, symlink
    escapes and write failures fail safely and preserve unrelated files.
-5. Matching pinned versions succeed; mismatches and unsupported schemas fail
+6. Matching pinned versions succeed; mismatches and unsupported schemas fail
    before writes. A controlled version bump re-renders cleanly and is then
    idempotent. `just check` and required CI pass on pinned Rust 1.85.
 
@@ -107,6 +136,9 @@ implementation agent may create that release or flip the live bootstrap flag.
 | [B: tylerbutler/acme#23](https://github.com/tylerbutler/acme/issues/23) | Local render command and exact golden fixtures | A merged |
 | [C: tylerbutler/acme#27](https://github.com/tylerbutler/acme/issues/27) | Ownership record, safe sync, check mode and removal tests | B merged |
 | [D: tylerbutler/acme#26](https://github.com/tylerbutler/acme/issues/26) | Version compatibility, upgrade tests and owner adoption guide | C and M2 repair slice merged |
+
+M3's core exit needs slices A to C. Slice D waits until the first stage0
+build exists; until then, bootstrap mode stays on and no pin is enforced.
 
 Planning can proceed alongside M2. Rendering work can follow its catalog
 without waiting for remote repairs; adoption requires the completed M2 doctor.
