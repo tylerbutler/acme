@@ -1,0 +1,33 @@
+name: Bug
+description: Report incorrect behavior with a reproducible case.
+title: "[bug] "
+labels: [bug, needs-spec]
+body:
+  - type: textarea
+    id: goal
+    attributes:
+      label: Goal
+      description: State the expected behavior and who is affected.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction
+      description: Include the command, input, version and actual result. Remove secrets.
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance scenarios
+      description: State how to verify the fix and which regression cases must pass.
+    validations:
+      required: true
+  - type: textarea
+    id: non-goals
+    attributes:
+      label: Non-goals
+      description: State what this fix must not change.
+    validations:
+      required: true

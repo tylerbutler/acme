@@ -34,7 +34,13 @@ generate-configs:
 check-configs:
     python3 scripts/check-configs-sync.py
 
-check: fmt-check lint check-configs test
+generate-schema:
+    cargo run --locked --bin generate-schema
+
+check-schema:
+    cargo run --quiet --locked --bin generate-schema -- --check
+
+check: fmt-check lint check-configs check-schema test
 
 ci: check
 
@@ -42,6 +48,10 @@ ci: check
 workflows:
     test "$(gh aw version)" = "gh aw version v0.93.5"
     gh aw compile --no-check-update --actionlint
+
+# Requires local pinned compiler and runtime paths; does not run a workflow.
+prove-assignment:
+    ACME_ASSIGNMENT_PROOF=1 python3 -m unittest discover -s tests -p test_assignment_handoff.py -v
 
 # Applies the hand-built GitHub settings; never enables an agent.
 bootstrap-github:

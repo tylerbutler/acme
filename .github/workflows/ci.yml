@@ -35,6 +35,8 @@ jobs:
         run: cargo clippy --locked --all-targets --all-features -- -D warnings
       - name: Rust tests
         run: cargo test --locked --all-features
+      - name: Factory schema freshness
+        run: cargo run --quiet --locked --bin generate-schema -- --check
       - name: Commit-config consistency
         run: python3 scripts/check-configs-sync.py
       - name: Bootstrap tool tests

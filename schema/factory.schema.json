@@ -1,0 +1,603 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "RawFactoryConfig",
+  "type": "object",
+  "required": [
+    "autonomy",
+    "bootstrap",
+    "budget",
+    "engines",
+    "languages",
+    "modules",
+    "profile",
+    "repository",
+    "risk",
+    "schema_version",
+    "solo",
+    "toolchain"
+  ],
+  "properties": {
+    "autonomy": {
+      "type": "string"
+    },
+    "bootstrap": {
+      "$ref": "#/definitions/BootstrapConfig"
+    },
+    "budget": {
+      "$ref": "#/definitions/BudgetConfig"
+    },
+    "coordinator": {
+      "$ref": "#/definitions/CoordinatorConfig"
+    },
+    "engines": {
+      "$ref": "#/definitions/EnginesConfig"
+    },
+    "languages": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "modules": {
+      "$ref": "#/definitions/ModulesConfig"
+    },
+    "profile": {
+      "type": "string"
+    },
+    "repository": {
+      "type": "string"
+    },
+    "risk": {
+      "$ref": "#/definitions/RiskConfig"
+    },
+    "schema_version": {
+      "type": "integer",
+      "format": "uint32",
+      "maximum": 0.0,
+      "minimum": 0.0
+    },
+    "solo": {
+      "type": "boolean"
+    },
+    "toolchain": {
+      "$ref": "#/definitions/ToolchainConfig"
+    }
+  },
+  "additionalProperties": false,
+  "definitions": {
+    "AcmeToolchainConfig": {
+      "type": "object",
+      "required": [
+        "bootstrap",
+        "target_version"
+      ],
+      "properties": {
+        "bootstrap": {
+          "type": "boolean"
+        },
+        "target_version": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "BootstrapConfig": {
+      "type": "object",
+      "required": [
+        "deferred",
+        "golden_source",
+        "live_loop_verified",
+        "milestone"
+      ],
+      "properties": {
+        "deferred": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "golden_source": {
+          "type": "string"
+        },
+        "live_loop_verified": {
+          "type": "boolean"
+        },
+        "milestone": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "BudgetConfig": {
+      "type": "object",
+      "required": [
+        "enforce_ai_credits",
+        "enforce_monthly",
+        "max_ai_credits_per_run",
+        "reason"
+      ],
+      "properties": {
+        "enforce_ai_credits": {
+          "type": "boolean"
+        },
+        "enforce_monthly": {
+          "type": "boolean"
+        },
+        "max_ai_credits_per_run": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "reason": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "BuildCloudEngineConfig": {
+      "type": "object",
+      "required": [
+        "engine",
+        "model",
+        "token_secret"
+      ],
+      "properties": {
+        "engine": {
+          "type": "string"
+        },
+        "model": {
+          "type": "string"
+        },
+        "token_secret": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "BuildCloudModuleConfig": {
+      "type": "object",
+      "required": [
+        "assignment_enabled",
+        "enabled",
+        "gate",
+        "max_pull_requests",
+        "max_repositories",
+        "needs",
+        "provides",
+        "staged",
+        "target_minutes",
+        "token_configured",
+        "token_secret",
+        "token_verified",
+        "workflow_enabled"
+      ],
+      "properties": {
+        "assignment_enabled": {
+          "type": "boolean"
+        },
+        "enabled": {
+          "type": "boolean"
+        },
+        "gate": {
+          "type": "string"
+        },
+        "max_pull_requests": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "max_repositories": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "needs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "provides": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "staged": {
+          "type": "boolean"
+        },
+        "target_minutes": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "token_configured": {
+          "type": "boolean"
+        },
+        "token_secret": {
+          "type": "string"
+        },
+        "token_verified": {
+          "type": "boolean"
+        },
+        "workflow_enabled": {
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false
+    },
+    "CiModuleConfig": {
+      "type": "object",
+      "required": [
+        "commands",
+        "enabled",
+        "gate",
+        "provides",
+        "required_checks"
+      ],
+      "properties": {
+        "commands": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "enabled": {
+          "type": "boolean"
+        },
+        "gate": {
+          "type": "string"
+        },
+        "provides": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "required_checks": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "CoordinatorConfig": {
+      "type": "object",
+      "properties": {
+        "automatic_dispatch": {
+          "default": false,
+          "type": "boolean"
+        },
+        "max_active_tasks": {
+          "default": 0,
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "max_assignments_per_reconciliation": {
+          "default": 0,
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "max_attempts": {
+          "default": 0,
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        }
+      },
+      "additionalProperties": false
+    },
+    "DisabledModuleConfig": {
+      "type": "object",
+      "required": [
+        "enabled"
+      ],
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false
+    },
+    "EngineConfig": {
+      "type": "object",
+      "required": [
+        "engine",
+        "token_secret"
+      ],
+      "properties": {
+        "engine": {
+          "type": "string"
+        },
+        "token_secret": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "EnginesConfig": {
+      "type": "object",
+      "required": [
+        "build_cloud",
+        "intake",
+        "review"
+      ],
+      "properties": {
+        "build_cloud": {
+          "$ref": "#/definitions/BuildCloudEngineConfig"
+        },
+        "intake": {
+          "$ref": "#/definitions/EngineConfig"
+        },
+        "review": {
+          "$ref": "#/definitions/ReviewEngineConfig"
+        }
+      },
+      "additionalProperties": false
+    },
+    "GhAwToolchainConfig": {
+      "type": "object",
+      "required": [
+        "version"
+      ],
+      "properties": {
+        "version": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "IntakeModuleConfig": {
+      "type": "object",
+      "required": [
+        "enabled",
+        "gate",
+        "needs",
+        "provides",
+        "roles",
+        "staged",
+        "workflow_enabled"
+      ],
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "gate": {
+          "type": "string"
+        },
+        "needs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "provides": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "roles": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "staged": {
+          "type": "boolean"
+        },
+        "workflow_enabled": {
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false
+    },
+    "MergeModuleConfig": {
+      "type": "object",
+      "required": [
+        "auto_merge",
+        "enabled",
+        "gate",
+        "implementation",
+        "needs",
+        "provides",
+        "require_extra_approval_for_unattributed_changes",
+        "required_approvals"
+      ],
+      "properties": {
+        "auto_merge": {
+          "type": "boolean"
+        },
+        "enabled": {
+          "type": "boolean"
+        },
+        "gate": {
+          "type": "string"
+        },
+        "implementation": {
+          "type": "string"
+        },
+        "needs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "provides": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "require_extra_approval_for_unattributed_changes": {
+          "type": "boolean"
+        },
+        "required_approvals": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        }
+      },
+      "additionalProperties": false
+    },
+    "ModulesConfig": {
+      "type": "object",
+      "required": [
+        "build_cloud",
+        "build_local",
+        "ci",
+        "holdout",
+        "intake",
+        "merge",
+        "ops",
+        "release",
+        "review",
+        "spec"
+      ],
+      "properties": {
+        "build_cloud": {
+          "$ref": "#/definitions/BuildCloudModuleConfig"
+        },
+        "build_local": {
+          "$ref": "#/definitions/DisabledModuleConfig"
+        },
+        "ci": {
+          "$ref": "#/definitions/CiModuleConfig"
+        },
+        "holdout": {
+          "$ref": "#/definitions/DisabledModuleConfig"
+        },
+        "intake": {
+          "$ref": "#/definitions/IntakeModuleConfig"
+        },
+        "merge": {
+          "$ref": "#/definitions/MergeModuleConfig"
+        },
+        "ops": {
+          "$ref": "#/definitions/DisabledModuleConfig"
+        },
+        "release": {
+          "$ref": "#/definitions/DisabledModuleConfig"
+        },
+        "review": {
+          "$ref": "#/definitions/DisabledModuleConfig"
+        },
+        "spec": {
+          "$ref": "#/definitions/SpecModuleConfig"
+        }
+      },
+      "additionalProperties": false
+    },
+    "ReviewEngineConfig": {
+      "type": "object",
+      "required": [
+        "enabled",
+        "engine",
+        "model_policy"
+      ],
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "engine": {
+          "type": "string"
+        },
+        "model_policy": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "RiskConfig": {
+      "type": "object",
+      "required": [
+        "auto_merge",
+        "default",
+        "human_merge",
+        "never_agent",
+        "path_gate_enforced"
+      ],
+      "properties": {
+        "auto_merge": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "default": {
+          "type": "string"
+        },
+        "human_merge": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "never_agent": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "path_gate_enforced": {
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false
+    },
+    "SpecModuleConfig": {
+      "type": "object",
+      "required": [
+        "enabled",
+        "gate",
+        "implementation",
+        "needs",
+        "provides"
+      ],
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "gate": {
+          "type": "string"
+        },
+        "implementation": {
+          "type": "string"
+        },
+        "needs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "provides": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "ToolchainConfig": {
+      "type": "object",
+      "required": [
+        "acme",
+        "gh_aw"
+      ],
+      "properties": {
+        "acme": {
+          "$ref": "#/definitions/AcmeToolchainConfig"
+        },
+        "gh_aw": {
+          "$ref": "#/definitions/GhAwToolchainConfig"
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}
