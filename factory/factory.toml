@@ -7,9 +7,8 @@ autonomy = "L3"
 solo = true
 
 [toolchain.acme]
-bootstrap = true
+bootstrap = false
 target_version = "0.1.0"
-# No released build exists. Add a release-tag pin after the manual stage0 build.
 
 [toolchain.gh_aw]
 version = "v0.93.5"
