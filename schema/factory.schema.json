@@ -233,7 +233,8 @@
         "enabled",
         "gate",
         "provides",
-        "required_checks"
+        "required_checks",
+        "step_names"
       ],
       "properties": {
         "commands": {
@@ -255,6 +256,12 @@
           }
         },
         "required_checks": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "step_names": {
           "type": "array",
           "items": {
             "type": "string"

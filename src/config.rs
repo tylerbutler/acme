@@ -270,6 +270,7 @@ pub struct CiModuleConfig {
     pub gate: String,
     pub required_checks: Vec<String>,
     pub commands: Vec<String>,
+    pub step_names: Vec<String>,
     pub provides: Vec<String>,
 }
 

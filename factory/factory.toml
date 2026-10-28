@@ -74,8 +74,17 @@ commands = [
   "cargo fmt --all -- --check",
   "cargo clippy --locked --all-targets --all-features -- -D warnings",
   "cargo test --locked --all-features",
+  "cargo run --quiet --locked --bin generate-schema -- --check",
   "python3 scripts/check-configs-sync.py",
   "python3 -m unittest discover -s tests -p 'test_*.py'",
+]
+step_names = [
+  "Check formatting",
+  "Clippy",
+  "Rust tests",
+  "Factory schema freshness",
+  "Commit-config consistency",
+  "Bootstrap tool tests",
 ]
 provides = ["ci"]
 
