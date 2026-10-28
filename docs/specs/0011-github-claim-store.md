@@ -1,6 +1,11 @@
 # GitHub claim journal and non-expiring ownership
 
-**Status: proposed implementation contract. No production store is installed.**
+**Status: paused with [spec 0010](0010-spec-dispatch-coordinator.md).**
+Do not install the journal, create the `acme-claims` branch or extend the
+adapter. A revisit must first show why a simpler exclusion is not enough for a
+single-owner repository with one active pull request.
+
+**Earlier status: proposed implementation contract. No production store is installed.**
 
 ## Goal, basis and approval
 

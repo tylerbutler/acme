@@ -14,13 +14,13 @@ body:
     id: acceptance
     attributes:
       label: Acceptance scenarios
-      description: Give concrete inputs, expected outputs and failure cases.
+      description: Give three to five concrete checks with inputs, outputs and failure cases. Split larger work.
     validations:
       required: true
   - type: textarea
     id: non-goals
     attributes:
       label: Non-goals
-      description: State what this change must not include.
+      description: State exclusions specific to this change. AGENTS.md rules always apply; do not repeat them.
     validations:
       required: true

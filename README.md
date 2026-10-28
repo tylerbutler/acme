@@ -7,7 +7,8 @@ It will not call an LLM. An agent skill will conduct the init interview.
 **Status: M0 factory loop verified.** The factory is hand-built. `doctor` runs
 read-only checks against the local module assets and the GitHub repository named
 in the config. It requires an authenticated `gh` CLI. `init`, `render` and `sync`
-are not implemented and fail explicitly.
+are not implemented and fail explicitly. M3 rendering is the next milestone;
+automatic dispatch is paused.
 
 ## Development
 
@@ -82,7 +83,8 @@ the shared instruction source.
 The owner approved leaving Intake and Build-cloud enabled with live safe
 outputs and both variable gates set to `true`. Intake triages admin-opened
 issues. Build-cloud still requires the owner to add `ready-for-agent` to a
-specified issue. **These events can use paid AI credits.** Each main agent run
+specified issue. The owner can also assign Copilot directly, which skips
+Build-cloud and its gates. **These events can use paid AI credits.** Each main agent run
 has a 5000-AI-credit cap; monthly and daily budgets are off.
 Both authentication paths use `GH_PAT`. Inference and live assignment passed. See
 [the bootstrap guide](docs/bootstrap.md) before enabling anything.

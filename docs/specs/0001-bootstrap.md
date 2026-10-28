@@ -11,7 +11,7 @@ renderer fixtures, not a claim that the CLI exists.
 | Stage | Input | Output | Gate |
 | --- | --- | --- | --- |
 | Intake | Admin-opened issue | Labels and clarification comment | Goal, acceptance scenarios, non-goals |
-| Spec | Triaged issue and brief | Human-written spec | Owner adds `ready-for-agent` |
+| Spec | Triaged issue and brief | Human-written spec | Owner adds `ready-for-agent` or assigns Copilot |
 | Build-cloud | Approved issue and spec | Live assignment; one draft PR | Owner actor, ready label, explicit enablement |
 | CI | PR | `CI` status | fmt, Clippy, tests, config consistency |
 | Merge | Green PR | Main commit | Human merge, required CI, resolved threads |
@@ -53,6 +53,11 @@ Do not create a release tag for a non-working binary.
 Do not claim that CODEOWNERS enforces `never-agent`.
 
 ## Next milestones
+
+M1 and M2 code is merged. M3 is the current priority. Merge the M3 spec, then
+build its slices in order: plan, render, sync, version pins. Automatic dispatch
+([spec 0010](0010-spec-dispatch-coordinator.md)) is paused and is not on the
+path to any milestone below.
 
 | Milestone | Deliverable | Exit check |
 | --- | --- | --- |

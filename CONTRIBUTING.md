@@ -41,5 +41,12 @@ The factory files are hand-built golden fixtures during bootstrap. Change
 `factory/factory.toml` and the matching fixtures together. No renderer exists yet.
 Do not enable an agent workflow or create a secret as part of an unrelated PR.
 
-Only the repository owner may add `ready-for-agent`. That label is approval
-to build a specified change, not approval to merge it.
+Only the repository owner may approve a build. The owner can add
+`ready-for-agent`, which runs the gated Build-cloud workflow, or assign Copilot
+to the issue directly. Direct assignment skips the workflow's spec check and
+variable gates. Either route approves a build, not a merge. See
+[Build routes](AGENTS.md#build-routes).
+
+Keep issues short: a brief goal, three to five acceptance scenarios and
+issue-specific non-goals. Do not repeat the standing rules in `AGENTS.md`.
+See [Writing issues](AGENTS.md#writing-issues).

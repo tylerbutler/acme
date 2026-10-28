@@ -17,6 +17,8 @@ Intake accepts admin-triggered issue opens during bootstrap. Its only writes
 are label and comment outputs. It cannot apply `ready-for-agent`.
 Build-cloud checks both the original actor and the rerun actor against the
 repository owner. Only the `ready-for-agent` label can trigger assignment.
+The owner can also assign Copilot directly, outside this workflow. That route
+skips the approval job, variable gates and credit cap; the owner checks the spec.
 
 Before inference, a read-only approval job checks that linked specs exist on
 the default branch. When an issue identifies a `Spec PR`, the check uses the
