@@ -1,6 +1,6 @@
 # M4: thin template and approved init
 
-**Status: proposed milestone plan, not implementation approval.**
+**Status: approved M4 direction, not implementation approval.**
 
 ## Goal and basis
 
@@ -13,11 +13,14 @@ Reconcile this plan with the completed M2/M3 interfaces before coding.
 
 ## Contract
 
-- Ship a separate thin template with `factory/brief.md`, an approved-config
-  stub, init-interview/spec-writer skills, an agent map and docs skeletons.
-  Pin an actual released acme version and its compatible schema. Do not copy
-  the CLI source, module implementation or pre-enabled workflows into it.
-- Start with a supported Rust/CLI baseline. Required project inputs, such as
+- Ship a separate public template repository named `tylerbutler/acme-template`
+  with `factory/brief.md`, an approved-config stub, init-interview/spec-writer
+  skills, an agent map and docs skeletons. Pin an actual released acme version
+  and its compatible schema. Do not choose exact values before stage0 exists.
+  Do not copy the CLI source, module implementation or pre-enabled workflows
+  into it.
+- Start with exactly `profile = "cli"` and `languages = ["rust"]`. Required
+  project inputs, such as
   Cargo files and configured CI commands, must exist or fail preflight with
   clear guidance. Do not copy acme-specific Python scripts into every project.
   Unavailable profile modules stay off; do not advertise a complete CLI
@@ -27,9 +30,9 @@ Reconcile this plan with the completed M2/M3 interfaces before coding.
   supported profile/languages, L3 autonomy, path risks, engines and cost limits.
   Ask about secret names and requirements, never secret values. Missing
   answers must not silently become permission for paid work or remote writes.
-- A human reviews the complete config and diff before generation. The binary
-  does not call an LLM, infer consent from prose, or launch the interview.
-  Define the exact approval hand-off before implementation.
+- A human reviews the complete config and diff. After approval, the human
+  explicitly invokes `acme init` with that approved config. The binary does
+  not call an LLM, infer consent from prose, or launch the interview.
 - `acme init` consumes approved config and reuses M1 validation and M3
   planning, rendering and ownership checks. Reject unsupported pins, schemas,
   dependencies and file conflicts before mutation. Preserve the brief,
@@ -63,13 +66,20 @@ Reconcile this plan with the completed M2/M3 interfaces before coding.
 
 ## Dependencies and decisions before implementation
 
-M3 version compatibility and owner adoption must be complete, including
-[tylerbutler/acme#26](https://github.com/tylerbutler/acme/issues/26).
-Do not substitute a pretend release pin for the manual stage0 release.
+M3 implementation and owner-approved stage0 adoption must be complete,
+including [tylerbutler/acme#26](https://github.com/tylerbutler/acme/issues/26).
+Closing #26 does not complete live adoption. The owner must build and tag a
+real stage0 release, install the matching binary, verify a zero-diff render,
+sync until a second `sync --check` is clean, and run read-only doctor. The owner
+then human-merges the approved pin and ownership record.
+Do not substitute a pretend release pin for the manual stage0 release. M4
+planning may proceed before adoption; M4 implementation may not.
 
-Before opening build slices, decide template owner/name/visibility, release
-and schema compatibility, the config-approval hand-off and the initial
-supported preset. Use the finished CLI interfaces, not guessed flags.
+Use the public `tylerbutler/acme-template` repository. Select the actual
+acme version and compatible schema only after the owner builds stage0. Start
+with the CLI/Rust preset above. A human must approve the complete config and
+diff before explicitly invoking `acme init` with that config. Use the finished
+CLI interfaces, not guessed flags.
 
 ## Non-goals and approval
 
@@ -77,8 +87,9 @@ No actual template/sample repository creation in this planning PR, broad
 language presets, rendered agent workflows, holdout provisioning, automatic
 upgrades, auto-merge or L4 autonomy. Existing acme settings stay unchanged.
 
-The milestone tracker is not a build task and must not receive
-`ready-for-agent` or direct builder assignment. After prerequisites and design
-decisions are accepted, open small implementation issues with their own
-scenarios and owner approval. A merged milestone spec approves direction,
-not remote side effects or the entire milestone as one agent run.
+The milestone tracker is not a build task and must remain blocked and
+unassigned until owner-approved stage0 adoption is complete. Do not apply
+`ready-for-agent` or assign a builder. Open small implementation issues with
+their own scenarios and separate owner approval. A merged milestone spec
+approves direction, not remote side effects or the entire milestone as one
+agent run.

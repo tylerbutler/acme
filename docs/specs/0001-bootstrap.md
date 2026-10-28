@@ -54,17 +54,18 @@ Do not claim that CODEOWNERS enforces `never-agent`.
 
 ## Next milestones
 
-M1 and M2 code is merged. M3 is the current priority. Merge the M3 spec, then
-build its slices in order: plan, render, sync, version pins. Automatic dispatch
-([spec 0010](0010-spec-dispatch-coordinator.md)) is paused and is not on the
-path to any milestone below.
+M1, M2 and M3 implementation are merged. M4 planning can proceed from
+[spec 0005](0005-m4-init-template-contract.md). M4 implementation remains
+blocked until the owner completes stage0 adoption under that spec. Automatic
+dispatch ([spec 0010](0010-spec-dispatch-coordinator.md)) is paused and is not
+on the path to any milestone below.
 
 | Milestone | Deliverable | Exit check |
 | --- | --- | --- |
 | M1 | Rust config types, generated schema, module manifests | Schema validates this config |
 | M2 | Deterministic modules and doctor | Detect and repair deliberate setting drift |
 | M3 | Render, sync and version pinning | Zero golden diff, idempotent sync and clean version bump |
-| M4 | Thin template and interview skill | Brief to merged init PR on a sample project |
+| M4 | Thin template, interview skill and deterministic init | Brief to merged init PR on a sample project |
 | M5 | Rendered intake and build-cloud | No manual workflow drift; staged then live |
 | M6 | Review and isolated holdout | Block a seeded bad PR that passes CI |
 | M7 | Local builds, provenance, release and ops | Independent tasks through gated merges |
