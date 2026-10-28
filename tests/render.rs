@@ -146,6 +146,47 @@ fn unchanged_factory_matches_every_golden_byte_and_repeats_identically() {
 }
 
 #[test]
+fn matching_pin_and_bootstrap_bypass_render_the_golden_inventory() {
+    for (bootstrap, pin) in [(false, env!("CARGO_PKG_VERSION")), (true, "HEAD")] {
+        let workspace = Workspace::new();
+        let actual = workspace.changed(|config| {
+            config["toolchain"]["acme"]["bootstrap"] = bootstrap.into();
+            config["toolchain"]["acme"]["target_version"] = pin.into();
+        });
+        assert_eq!(actual, golden_tree());
+    }
+}
+
+#[test]
+fn rejected_version_pins_leave_missing_and_empty_destinations_untouched() {
+    for pin in ["0.0.1", "HEAD", "latest", "^0.1.0", "v0.1.0", "0.1.0 "] {
+        for exists in [false, true] {
+            let workspace = Workspace::new();
+            let mut config: toml::Value = toml::from_str(FACTORY).unwrap();
+            config["toolchain"]["acme"]["bootstrap"] = false.into();
+            config["toolchain"]["acme"]["target_version"] = pin.into();
+            fs::write(
+                workspace.0.join("factory/factory.toml"),
+                toml::to_string(&config).unwrap(),
+            )
+            .unwrap();
+            let destination = workspace.0.join("output");
+            if exists {
+                fs::create_dir(&destination).unwrap();
+            }
+            let before = tree(&workspace.0);
+            let output = workspace.render(&destination);
+            assert!(!output.status.success(), "accepted {pin:?}");
+            assert!(
+                String::from_utf8_lossy(&output.stderr).contains("toolchain.acme.target_version")
+            );
+            assert_eq!(tree(&workspace.0), before);
+            assert_eq!(destination.exists(), exists);
+        }
+    }
+}
+
+#[test]
 fn an_added_command_adds_exactly_one_step_and_does_not_execute_it() {
     let workspace = Workspace::new();
     let actual = workspace.changed(|config| {

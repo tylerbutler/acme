@@ -70,11 +70,18 @@ record last. An I/O error stops sync and reports partial application; there is
 no rollback. Resolve partial changes by hand before retrying. Do not run sync
 with concurrent checkout writers: these checks are not a race-proof filesystem
 sandbox. Sync is local; it does not run doctor, provision settings or compile
-agent workflows. Config version-pin enforcement remains M3 slice D.
+agent workflows.
+
+Outside `[toolchain.acme]` bootstrap mode, render and sync require a concrete
+`target_version` that exactly matches the running binary. Use the version without
+the release tag's `v` prefix. Moving references and ranges are not pins.
+Validation fails before writes, including in sync check mode. Bootstrap mode
+treats the version as a build target only. The CLI does not download binaries
+or check remote tags.
 
 The live factory has not been adopted by this implementation. Live adoption
 requires the separate owner-approved release and pin procedure in the
-[M3 spec](docs/specs/0004-m3-render-sync-contract.md#version-contract).
+[owner-only adoption guide](docs/bootstrap.md#owner-only-stage0-adoption).
 
 ### Local rendering
 

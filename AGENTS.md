@@ -20,8 +20,9 @@ Missing owned outputs are recreated. It rejects unsafe records, symlinks and
 non-regular targets before writes. Replacements use staged sibling files;
 the record is written last. I/O errors can leave partial output changes with
 the old record; sync does not promise rollback or protection against concurrent
-checkout writers. Live adoption needs separate owner approval. Version-pin
-enforcement remains slice D. `init` is not implemented and must fail explicitly.
+checkout writers. Live adoption needs separate owner approval. Outside bootstrap
+mode, render and sync require a concrete version pin that matches the binary
+before writes. `init` is not implemented and must fail explicitly.
 Explicit `doctor --fix` repairs
 supported remote drift after plan validation and then runs fresh checks.
 M3 rendering is the current priority. Automatic dispatch (specs 0010 and 0011)
