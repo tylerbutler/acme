@@ -279,6 +279,33 @@ bootstrap flag. A tag alone does not prove adoption.
 7. Review the pin and `factory/managed-files.json` diff. Human-merge the adoption
    changes only after the checks pass. Only then claim self-hosting adoption.
 
+### Stage0 adoption evidence
+
+Recorded on 2026-10-28 from source revision
+`997a365af1e2b167b2c209f84798006c77860feb`. The package version was `0.1.0`.
+The pinned Rust toolchain resolved to `rustc 1.85.1
+(4eb161250 2025-03-15)`. `TMPDIR=/private/tmp just check` passed; 26 Python
+tests ran and 2 were skipped.
+
+The owner authorized retargeting the existing `v0.1.0` tag. Its previous
+commit was `0342c130b30658eb91d4aaacba8a77a87345e70b`; it now points to
+`997a365af1e2b167b2c209f84798006c77860feb` through annotated tag object
+`22e77755b4018ac2e85efbf06e5971c8dbd11831`. This is an exception to step 2
+above. Existing clones may still retain the previous target.
+
+`cargo build --locked --release --bin acme` passed. A copy of the binary was
+preserved outside the build directory; its SHA-256 is
+`87c2c902492e6525ae1f32d89a6e01c5e2695ee692877f0af0c7f79818c8c0cb`.
+That binary rendered all 8 inventory files, each matching the checkout
+byte-for-byte. The first `sync --check` requested only
+`factory/managed-files.json`; sync wrote that record, and the next check was
+clean.
+
+Read-only `doctor --config factory/factory.toml` reported 56 PASS, 0 FAIL and
+3 DEFERRED: path-author enforcement, model separation and token-scope
+verification. These safeguards remain unimplemented or unenforced. No
+`doctor --fix` command was run. Adoption remains pending human review and merge.
+
 For an upgrade, approve a new concrete config pin and explicitly install the
 matching tagged binary. Render, review the output diff, sync, check again and
 run read-only doctor. Unchanged outputs may require only an ownership-record

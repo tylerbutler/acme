@@ -1,0 +1,46 @@
+{
+  "format_version": 1,
+  "acme_version": "0.1.0",
+  "entries": [
+    {
+      "module": "issue-forms",
+      "path": ".github/ISSUE_TEMPLATE/bug.yml",
+      "sha256": "8f46ef9608fbd817c2122501029e5aff98770dc262b4a1631be345dc482e610d"
+    },
+    {
+      "module": "issue-forms",
+      "path": ".github/ISSUE_TEMPLATE/config.yml",
+      "sha256": "1f103c6a9dd07cd13a9a6f17ace6b813f47747eb9cb7e00488cb2073caaf91bb"
+    },
+    {
+      "module": "issue-forms",
+      "path": ".github/ISSUE_TEMPLATE/idea.yml",
+      "sha256": "120b0387e6bbc3fb3c1c39b564a1134f6a77c6a37dce345c04eabac6aabff2e4"
+    },
+    {
+      "module": "issue-forms",
+      "path": ".github/ISSUE_TEMPLATE/spec-request.yml",
+      "sha256": "2cdd68897ce42bfc993562c2b7c4a22b66d808c73b50697165953df28ee136b3"
+    },
+    {
+      "module": "ci",
+      "path": ".github/actions/setup-rust/action.yml",
+      "sha256": "2410048c521137a003e0e981005a473d32e51d4db2ff1ed1231ad274081c0377"
+    },
+    {
+      "module": "labels",
+      "path": ".github/labels.yml",
+      "sha256": "6f2d5255202f530d8a31045a8d7f54d68c058ec312e3cf4f70e9618aade8d8c4"
+    },
+    {
+      "module": "ruleset",
+      "path": ".github/rulesets/main.json",
+      "sha256": "9632ead9609e04753b81ab41063833e9c0b8827f50f1045530436b4935cbacc8"
+    },
+    {
+      "module": "ci",
+      "path": ".github/workflows/ci.yml",
+      "sha256": "bb485d9fc6e2bb9812e794e669574f24d19d78ad43a16cb639a777e1fd1feb7e"
+    }
+  ]
+}
