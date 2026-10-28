@@ -1,9 +1,9 @@
 use super::{PlannedOutput, TemplateInputs, build_render_plan};
 use crate::FactoryConfig;
-use std::fmt;
+use std::fmt::{self, Write as _};
 use std::fs::{self, OpenOptions};
 use std::io::{self, Write as _};
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 
 #[derive(Debug)]
 pub struct RenderError(String);
@@ -25,6 +25,14 @@ pub fn render_to_directory(config: &FactoryConfig, destination: &Path) -> Result
         .collect::<Result<Vec<_>, _>>()?;
     let destination =
         std::path::absolute(destination).map_err(|error| io_error(destination, &error))?;
+    if destination
+        .components()
+        .any(|component| component == Component::ParentDir)
+    {
+        return Err(RenderError(
+            "render destination must not contain parent (..) components".to_owned(),
+        ));
+    }
     check_ancestors(&destination)?;
     match fs::read_dir(&destination) {
         Ok(mut entries) => {
@@ -133,9 +141,7 @@ fn yaml_scalar(value: &str) -> String {
         && value.trim() == value
         && !reserved.contains(&value.to_ascii_lowercase().as_str())
         && !value.contains([':', '#', '\\', '@', '`', '{', '}', '[', ']'])
-        && !value
-            .chars()
-            .any(|character| character.is_control() || matches!(character, '\u{2028}' | '\u{2029}'))
+        && !value.chars().any(needs_unicode_escape)
     {
         value.to_owned()
     } else {
@@ -144,11 +150,22 @@ fn yaml_scalar(value: &str) -> String {
 }
 
 fn json_string(value: &str) -> String {
-    serde_json::to_string(value)
+    let mut escaped = String::new();
+    for character in serde_json::to_string(value)
         .expect("serialize string")
-        .replace('\u{85}', "\\u0085")
-        .replace('\u{2028}', "\\u2028")
-        .replace('\u{2029}', "\\u2029")
+        .chars()
+    {
+        if needs_unicode_escape(character) {
+            write!(escaped, "\\u{:04x}", u32::from(character)).expect("write to string");
+        } else {
+            escaped.push(character);
+        }
+    }
+    escaped
+}
+
+fn needs_unicode_escape(character: char) -> bool {
+    character.is_control() || matches!(character, '\u{2028}' | '\u{2029}' | '\u{fffe}' | '\u{ffff}')
 }
 
 fn check_ancestors(path: &Path) -> Result<(), RenderError> {

@@ -1,8 +1,8 @@
 # acme
 
-A deterministic software-factory CLI, written in Rust. The binary will read
-`factory/factory.toml` and render the workflows and guardrails a project needs.
-It will not call an LLM. An agent skill will conduct the init interview.
+A deterministic software-factory CLI, written in Rust. The binary reads
+`factory/factory.toml` and renders the supported M2 workflows and guardrails.
+It does not call an LLM. An agent skill will conduct the init interview.
 
 **Status: M0 factory loop verified.** The factory is hand-built. `doctor` runs
 read-only checks against the local module assets and the GitHub repository named
@@ -54,7 +54,8 @@ acme render --config path/to/factory.toml --output /tmp/acme-preview
 
 Render reads `factory/factory.toml` by default and validates the complete plan
 before writing. The destination must be absent or empty. Render rejects
-symlinked destinations and ancestors. An I/O failure can leave partial output;
+symlinked destinations, symlinked ancestors and parent (`..`) components.
+An I/O failure can leave partial output;
 inspect it and use a fresh destination to retry.
 
 The binary embeds its templates and does not need the source checkout or `gh`.
@@ -91,7 +92,7 @@ the shared instruction source.
 | File | Purpose |
 | --- | --- |
 | `factory/brief.md` | Project goals and constraints |
-| `factory/factory.toml` | Human-approved config read and validated by doctor |
+| `factory/factory.toml` | Human-approved config read and validated by doctor and render |
 | `AGENTS.md` | Agent instructions and risk boundaries |
 | `.github/workflows/ci.yml` | Required `CI` check: fmt, Clippy and tests |
 | `.github/workflows/intake.md` | Admin-opened issue intake |

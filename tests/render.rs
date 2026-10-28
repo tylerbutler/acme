@@ -152,7 +152,7 @@ fn an_added_command_adds_exactly_one_step_and_does_not_execute_it() {
         config["modules"]["ci"]["commands"]
             .as_array_mut()
             .unwrap()
-            .push("touch renderer-must-not-execute".into());
+            .push("echo executed > renderer-must-not-execute".into());
         config["modules"]["ci"]["step_names"]
             .as_array_mut()
             .unwrap()
@@ -163,7 +163,7 @@ fn an_added_command_adds_exactly_one_step_and_does_not_execute_it() {
         &[(
             CI,
             format!(
-                "{}      - name: Extra check\n        run: touch renderer-must-not-execute\n",
+                "{}      - name: Extra check\n        run: echo executed > renderer-must-not-execute\n",
                 golden(CI)
             ),
         )],
@@ -334,6 +334,32 @@ fn scalar_escaping_cannot_inject_yaml_or_trigger_recursive_substitution() {
 }
 
 #[test]
+fn yaml_forbidden_unicode_is_escaped_without_changing_the_scalar_value() {
+    for (character, escaped) in [
+        ('\u{7f}', "\\u007f"),
+        ('\u{84}', "\\u0084"),
+        ('\u{86}', "\\u0086"),
+        ('\u{9f}', "\\u009f"),
+        ('\u{fffe}', "\\ufffe"),
+        ('\u{ffff}', "\\uffff"),
+    ] {
+        let workspace = Workspace::new();
+        let value = format!("Check {character} end");
+        let actual = workspace.changed(|config| {
+            config["modules"]["ci"]["step_names"][0] = value.clone().into();
+        });
+        let workflow = std::str::from_utf8(&actual[CI]).unwrap();
+        let scalar = workflow
+            .lines()
+            .find_map(|line| line.strip_prefix("      - name: "))
+            .unwrap();
+        assert_eq!(scalar, format!("\"Check {escaped} end\""));
+        assert_eq!(serde_json::from_str::<String>(scalar).unwrap(), value);
+        assert!(!workflow.contains(character));
+    }
+}
+
+#[test]
 fn nonempty_destinations_and_files_are_rejected_without_changes() {
     let workspace = Workspace::new();
     let destination = workspace.0.join("output");
@@ -348,6 +374,20 @@ fn nonempty_destinations_and_files_are_rejected_without_changes() {
     fs::write(&file, b"keep me").unwrap();
     assert!(!workspace.render(&file).status.success());
     assert_eq!(fs::read(file).unwrap(), b"keep me");
+}
+
+#[test]
+fn parent_components_cannot_bypass_destination_preflight() {
+    let workspace = Workspace::new();
+    let existing = workspace.0.join("existing");
+    fs::create_dir(&existing).unwrap();
+    fs::write(existing.join("keep"), b"keep me").unwrap();
+    let before = tree(&existing);
+    let output = workspace.render(&existing.join("missing/.."));
+    assert!(!output.status.success());
+    assert!(String::from_utf8_lossy(&output.stderr).contains(".."));
+    assert_eq!(tree(&existing), before);
+    assert!(!existing.join("missing").exists());
 }
 
 #[cfg(unix)]
