@@ -46,19 +46,73 @@ text that has no config field stays fixed and reviewed.
 
 | Config field | Output |
 | --- | --- |
+| `modules.ci.enabled` | Presence of `.github/workflows/ci.yml` and `.github/actions/setup-rust/action.yml` |
 | `modules.ci.commands` | `run` steps in `.github/workflows/ci.yml`, in config order |
-| `modules.ci.required_checks` | CI job `name`; required status check contexts in `.github/rulesets/main.json` |
+| `modules.ci.step_names` | The corresponding command step `name` in `.github/workflows/ci.yml`, in config order |
+| `modules.ci.required_checks` | CI job `name`; required status check contexts in `.github/rulesets/main.json`. The current single-job template requires exactly one nonempty check when CI is enabled. |
+| `modules.merge.enabled` | Presence of `.github/rulesets/main.json` |
 | `modules.merge.required_approvals` | `required_approving_review_count` in the ruleset |
+| `modules.merge.require_extra_approval_for_unattributed_changes` | `require_extra_approval_for_unattributed_changes` in the ruleset |
 | `modules.intake.enabled` | Presence of `.github/labels.yml` and the issue forms |
 
-Slice A must complete this table for every config-dependent byte. Where the
-config lacks data the output needs, such as CI step names, slice A proposes a
-schema change. Schema changes need human merge.
+Enabled merge requires nonempty required-check names even when an external
+stage provides `ci` and the bundled CI module is disabled.
 
-The config and the live files disagree today: `ci.yml` runs the schema
-freshness check, but `modules.ci.commands` omits it. The live files are the
-reviewed source of truth. Slice A fixes the config to match them; it does not
-change the live files to match the config.
+Slice A proposes the required `modules.ci.step_names` string list in schema
+version 0. Keep `commands` as strings. Each enabled CI command needs one nonempty
+step name at the same index. The checked-in config supplies the six reviewed
+names and commands, including the schema freshness check. This schema change
+needs human merge. The live files remain the reviewed source of truth; do not
+change them to match incomplete config.
+
+These are all config-dependent bytes in the M2 output inventory. Everything else
+in these assets stays fixed, including workflow and job IDs, the workflow's
+top-level name, action pins, Rust 1.85, runner, triggers, concurrency expressions,
+permissions, label and form definitions, ruleset name, branch, enforcement,
+integration ID, allowed merge methods and resolved-thread requirement.
+
+The other config fields do not substitute output bytes:
+
+- Enabled stages and their `needs` and `provides` declarations affect capability
+  validation. Built-in manifest capabilities also apply. Enabled human merge
+  additionally needs `ruleset`; its required-CI gate needs `ci`.
+- CI's gate must be `required-status-check`. Merge must use the human
+  implementation and `required-ci-and-resolved-threads`, with `auto_merge = false`.
+  Built-in gates and config bindings must match implemented M2 checks. This
+  validates supported declarations, not installed GitHub state.
+- Intake, Spec, Build-cloud and Merge remain external stages. Their capabilities
+  can satisfy dependencies, but the plan does not verify their external gates.
+  Their other settings do not alter deterministic assets or agent workflows.
+- The supported preset is `profile = "cli"` with `languages = ["rust"]`. Other
+  profiles, languages and enabled stub modules are unsupported.
+- Repository identity, autonomy, solo mode, engine, budget, risk and bootstrap
+  metadata do not change these assets. Toolchain pins do not change them:
+  gh-aw applies to hand-built workflows; acme version enforcement is slice D.
+
+### Slice A plan interface
+
+`acme::render::build_render_plan(&FactoryConfig)` uses the bundled M2 catalog.
+`build_render_plan_with_catalog` accepts a supplied catalog for validation tests.
+Both functions return a complete plan or an explicit error. They do not read
+project files, inspect an output directory, execute commands or contact GitHub.
+The caller loads approved config through M1 before planning.
+
+The plan records the binary version, dependency-ordered renderable manifests,
+name-ordered external stage declarations and path-ordered outputs. Each output
+contains its module owner, relative path, unchanged bundled template source
+bytes and typed CI, ruleset or static inputs. Capability lists are sorted and
+deduplicated; dependency ties use module-name order. CI steps retain config
+order. Duplicate providers and dependency cycles fail, including those that
+involve external stages. The template source remains the M2 fixture in slice A;
+placeholder substitution and final output bytes belong to slice B.
+
+Path validation rejects absolute paths, empty or dot components, parent
+traversal, control characters, backslashes, drive prefixes and Git metadata.
+Paths use ASCII letters, digits, `-`, `_`, `.`, and `/`. Reject exact and
+case-insensitive collisions, and file/directory overlaps. This is lexical plan
+validation only. A supplied catalog must include each selected module's full M2
+inventory and cannot claim other paths. Filesystem and symlink checks remain
+required before writes in later slices.
 
 ## Sync and ownership contract
 

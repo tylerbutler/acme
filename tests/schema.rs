@@ -80,3 +80,24 @@ fn malformed_toml_remains_a_toml_parser_error() {
     ));
     assert!(toml::from_str::<toml::Value>(input).is_err());
 }
+
+#[test]
+fn ci_step_names_are_required_strings_in_rust_and_schema() {
+    let schema = serde_json::to_value(factory_schema()).unwrap();
+    let mut raw: toml::Value = toml::from_str(FACTORY).unwrap();
+    raw["modules"]["ci"]
+        .as_table_mut()
+        .unwrap()
+        .remove("step_names");
+    let missing = toml::to_string(&raw).unwrap();
+    assert_schema_and_rust_agree(&schema, &missing);
+    assert!(FactoryConfig::from_toml(&missing).is_err());
+
+    raw["modules"]["ci"].as_table_mut().unwrap().insert(
+        "step_names".to_owned(),
+        toml::Value::Array(vec![toml::Value::Integer(1)]),
+    );
+    let wrong_type = toml::to_string(&raw).unwrap();
+    assert_schema_and_rust_agree(&schema, &wrong_type);
+    assert!(FactoryConfig::from_toml(&wrong_type).is_err());
+}
