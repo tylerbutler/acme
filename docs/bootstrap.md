@@ -7,8 +7,9 @@ approved draft in `factory/factory.toml` are future renderer fixtures. There is
 no renderer yet. Doctor checks supported local assets and remote settings.
 Keep local config and fixtures consistent by hand.
 
-The `main` ruleset requires a PR, the GitHub Actions `CI` check, an up-to-date
-branch and resolved review threads. It has zero required approvals and no
+The `main` ruleset requires a PR, the GitHub Actions `CI` check and resolved
+review threads. Branches do not have to be up to date before merging.
+It has zero required approvals and no
 bypass actors. Auto-merge is off. A human reviews and merges.
 The extra-approval rule for unattributed Copilot changes is explicitly off:
 GitHub enables it by default, which can require an approval even in solo mode.

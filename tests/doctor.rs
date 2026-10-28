@@ -249,7 +249,7 @@ const fn status_check_mutations() -> [(&'static str, Mutation); 3] {
     [
         (
             "github.ruleset.status-checks.strict_required_status_checks_policy",
-            Mutation::StatusCheck("strict_required_status_checks_policy", json!(false)),
+            Mutation::StatusCheck("strict_required_status_checks_policy", json!(true)),
         ),
         (
             "github.ruleset.status-checks.do_not_enforce_on_create",
