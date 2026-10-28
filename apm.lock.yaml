@@ -1,5 +1,57 @@
 lockfile_version: '1'
+apm_version: 0.35.0
 dependencies:
+- repo_url: dietrichgebert/ponytail
+  materialization_repo_url: DietrichGebert/ponytail
+  name: ponytail
+  host: github.com
+  resolved_commit: 09c434ab73ca43761c5d8b0c5d341926c2fba710
+  version: 09c434a
+  package_type: skill_bundle
+  deployed_files:
+  - .agents/skills/ponytail
+  - .agents/skills/ponytail-audit
+  - .agents/skills/ponytail-audit/SKILL.md
+  - .agents/skills/ponytail-debt
+  - .agents/skills/ponytail-debt/SKILL.md
+  - .agents/skills/ponytail-gain
+  - .agents/skills/ponytail-gain/SKILL.md
+  - .agents/skills/ponytail-help
+  - .agents/skills/ponytail-help/SKILL.md
+  - .agents/skills/ponytail-review
+  - .agents/skills/ponytail-review/SKILL.md
+  - .agents/skills/ponytail/SKILL.md
+  - .claude/skills/ponytail
+  - .claude/skills/ponytail-audit
+  - .claude/skills/ponytail-audit/SKILL.md
+  - .claude/skills/ponytail-debt
+  - .claude/skills/ponytail-debt/SKILL.md
+  - .claude/skills/ponytail-gain
+  - .claude/skills/ponytail-gain/SKILL.md
+  - .claude/skills/ponytail-help
+  - .claude/skills/ponytail-help/SKILL.md
+  - .claude/skills/ponytail-review
+  - .claude/skills/ponytail-review/SKILL.md
+  - .claude/skills/ponytail/SKILL.md
+  - .github/hooks/ponytail-copilot-hooks.json
+  deployed_file_hashes:
+    .agents/skills/ponytail-audit/SKILL.md: sha256:2b3223a02c386d1263e1b08343cb8eb3a53e444cdafb1d79e26c8ec2a8fcad28
+    .agents/skills/ponytail-debt/SKILL.md: sha256:b5ec2762f6ba8c4af9ea7173aa6c9f91b88655a25e43f9de0264f6ce8722b25f
+    .agents/skills/ponytail-gain/SKILL.md: sha256:231034a896d6762e4b5c8468287083422c56b499119976ec9f76821f7d083090
+    .agents/skills/ponytail-help/SKILL.md: sha256:86ab0ce0af70cbeeeef499d5c884873b393f87f86401dcc45553662ce2c1eff9
+    .agents/skills/ponytail-review/SKILL.md: sha256:33fe4ebe22a460924e5d4a261e223df22e409cc94ab76182bee9fb91a3ef022e
+    .agents/skills/ponytail/SKILL.md: sha256:9badd22a32e19cb884e46dfa8d3aae82bb81dfa5484105b8b4f0262df823a509
+    .claude/skills/ponytail-audit/SKILL.md: sha256:2b3223a02c386d1263e1b08343cb8eb3a53e444cdafb1d79e26c8ec2a8fcad28
+    .claude/skills/ponytail-debt/SKILL.md: sha256:b5ec2762f6ba8c4af9ea7173aa6c9f91b88655a25e43f9de0264f6ce8722b25f
+    .claude/skills/ponytail-gain/SKILL.md: sha256:231034a896d6762e4b5c8468287083422c56b499119976ec9f76821f7d083090
+    .claude/skills/ponytail-help/SKILL.md: sha256:86ab0ce0af70cbeeeef499d5c884873b393f87f86401dcc45553662ce2c1eff9
+    .claude/skills/ponytail-review/SKILL.md: sha256:33fe4ebe22a460924e5d4a261e223df22e409cc94ab76182bee9fb91a3ef022e
+    .claude/skills/ponytail/SKILL.md: sha256:9badd22a32e19cb884e46dfa8d3aae82bb81dfa5484105b8b4f0262df823a509
+    .github/hooks/ponytail-copilot-hooks.json: sha256:692b5148c3605d2ece2f081834b650c3c43d75cb272a7884dc40e9ce4425ef79
+  content_hash: sha256:5087e9e5f577b05cc53ba392a4d263787d9d65ac8dc97bbd71adf42d4cf7672f
+  is_dev: true
+  discovered_via: ponytail
+  marketplace_plugin_name: ponytail
 - repo_url: obra/superpowers
   name: superpowers
   host: github.com
@@ -387,7 +439,44 @@ dependencies:
   content_hash: sha256:6b5faef50708547c0a36884a8b64295ecf8ee6d902aa0915faac8343828d8bb4
   is_dev: true
   declared_license: MIT
+- repo_url: tylerbutler/agent-marketplace
+  name: rust
+  host: github.com
+  resolved_commit: a88af94c38d2247b18e59d9f237676e62edfed2a
+  version: 0.1.0
+  virtual_path: plugins/rust
+  is_virtual: true
+  package_type: apm_package
+  deployed_files:
+  - .claude/agents/rust-specialist.md
+  - .claude/agents/rust-verifier.md
+  - .github/agents/rust-specialist.agent.md
+  - .github/agents/rust-verifier.agent.md
+  deployed_file_hashes:
+    .claude/agents/rust-specialist.md: sha256:86e143344ba169cc88a42628191f1315792c577042f973e59f0d725bf7cb65fe
+    .claude/agents/rust-verifier.md: sha256:b7587fdf320b5e17bec83a555c191484449a1aa915f67b8d97bd95a4edab2ade
+    .github/agents/rust-specialist.agent.md: sha256:86e143344ba169cc88a42628191f1315792c577042f973e59f0d725bf7cb65fe
+    .github/agents/rust-verifier.agent.md: sha256:b7587fdf320b5e17bec83a555c191484449a1aa915f67b8d97bd95a4edab2ade
+  content_hash: sha256:6a58245f7c7fc2b67bcfcf5f01781d930fe8d6aa4aaaae64704676ad09d8a325
 deployments:
+- kind: project-relative
+  target: claude
+  value: .claude/agents/rust-specialist.md
+  runtime: null
+  scope: project
+  owners:
+  - tylerbutler/agent-marketplace/plugins/rust
+  active_owner: tylerbutler/agent-marketplace/plugins/rust
+  content_hash: sha256:86e143344ba169cc88a42628191f1315792c577042f973e59f0d725bf7cb65fe
+- kind: project-relative
+  target: claude
+  value: .claude/agents/rust-verifier.md
+  runtime: null
+  scope: project
+  owners:
+  - tylerbutler/agent-marketplace/plugins/rust
+  active_owner: tylerbutler/agent-marketplace/plugins/rust
+  content_hash: sha256:b7587fdf320b5e17bec83a555c191484449a1aa915f67b8d97bd95a4edab2ade
 - kind: project-relative
   target: claude
   value: .claude/hooks/superpowers/hooks/run-hook.cmd
@@ -757,6 +846,114 @@ deployments:
   - obra/superpowers
   active_owner: obra/superpowers
   content_hash: sha256:8db5a922b242dd4e1bf824cb91c13b3e8d8e8a86d6ceaf7f0774eb9cce909d65
+- kind: project-relative
+  target: claude
+  value: .claude/skills/ponytail
+  runtime: null
+  scope: project
+  owners:
+  - dietrichgebert/ponytail
+  active_owner: dietrichgebert/ponytail
+  content_hash: null
+- kind: project-relative
+  target: claude
+  value: .claude/skills/ponytail-audit
+  runtime: null
+  scope: project
+  owners:
+  - dietrichgebert/ponytail
+  active_owner: dietrichgebert/ponytail
+  content_hash: null
+- kind: project-relative
+  target: claude
+  value: .claude/skills/ponytail-audit/SKILL.md
+  runtime: null
+  scope: project
+  owners:
+  - dietrichgebert/ponytail
+  active_owner: dietrichgebert/ponytail
+  content_hash: sha256:2b3223a02c386d1263e1b08343cb8eb3a53e444cdafb1d79e26c8ec2a8fcad28
+- kind: project-relative
+  target: claude
+  value: .claude/skills/ponytail-debt
+  runtime: null
+  scope: project
+  owners:
+  - dietrichgebert/ponytail
+  active_owner: dietrichgebert/ponytail
+  content_hash: null
+- kind: project-relative
+  target: claude
+  value: .claude/skills/ponytail-debt/SKILL.md
+  runtime: null
+  scope: project
+  owners:
+  - dietrichgebert/ponytail
+  active_owner: dietrichgebert/ponytail
+  content_hash: sha256:b5ec2762f6ba8c4af9ea7173aa6c9f91b88655a25e43f9de0264f6ce8722b25f
+- kind: project-relative
+  target: claude
+  value: .claude/skills/ponytail-gain
+  runtime: null
+  scope: project
+  owners:
+  - dietrichgebert/ponytail
+  active_owner: dietrichgebert/ponytail
+  content_hash: null
+- kind: project-relative
+  target: claude
+  value: .claude/skills/ponytail-gain/SKILL.md
+  runtime: null
+  scope: project
+  owners:
+  - dietrichgebert/ponytail
+  active_owner: dietrichgebert/ponytail
+  content_hash: sha256:231034a896d6762e4b5c8468287083422c56b499119976ec9f76821f7d083090
+- kind: project-relative
+  target: claude
+  value: .claude/skills/ponytail-help
+  runtime: null
+  scope: project
+  owners:
+  - dietrichgebert/ponytail
+  active_owner: dietrichgebert/ponytail
+  content_hash: null
+- kind: project-relative
+  target: claude
+  value: .claude/skills/ponytail-help/SKILL.md
+  runtime: null
+  scope: project
+  owners:
+  - dietrichgebert/ponytail
+  active_owner: dietrichgebert/ponytail
+  content_hash: sha256:86ab0ce0af70cbeeeef499d5c884873b393f87f86401dcc45553662ce2c1eff9
+- kind: project-relative
+  target: claude
+  value: .claude/skills/ponytail-review
+  runtime: null
+  scope: project
+  owners:
+  - dietrichgebert/ponytail
+  active_owner: dietrichgebert/ponytail
+  content_hash: null
+- kind: project-relative
+  target: claude
+  value: .claude/skills/ponytail-review/SKILL.md
+  runtime: null
+  scope: project
+  owners:
+  - dietrichgebert/ponytail
+  active_owner: dietrichgebert/ponytail
+  content_hash: sha256:33fe4ebe22a460924e5d4a261e223df22e409cc94ab76182bee9fb91a3ef022e
+- kind: project-relative
+  target: claude
+  value: .claude/skills/ponytail/SKILL.md
+  runtime: null
+  scope: project
+  owners:
+  - dietrichgebert/ponytail
+  active_owner: dietrichgebert/ponytail
+  content_hash: sha256:9badd22a32e19cb884e46dfa8d3aae82bb81dfa5484105b8b4f0262df823a509
 - kind: project-relative
   target: claude
   value: .claude/skills/receiving-code-review
@@ -1650,6 +1847,114 @@ deployments:
   content_hash: sha256:8db5a922b242dd4e1bf824cb91c13b3e8d8e8a86d6ceaf7f0774eb9cce909d65
 - kind: project-relative
   target: copilot
+  value: .agents/skills/ponytail
+  runtime: null
+  scope: project
+  owners:
+  - dietrichgebert/ponytail
+  active_owner: dietrichgebert/ponytail
+  content_hash: null
+- kind: project-relative
+  target: copilot
+  value: .agents/skills/ponytail-audit
+  runtime: null
+  scope: project
+  owners:
+  - dietrichgebert/ponytail
+  active_owner: dietrichgebert/ponytail
+  content_hash: null
+- kind: project-relative
+  target: copilot
+  value: .agents/skills/ponytail-audit/SKILL.md
+  runtime: null
+  scope: project
+  owners:
+  - dietrichgebert/ponytail
+  active_owner: dietrichgebert/ponytail
+  content_hash: sha256:2b3223a02c386d1263e1b08343cb8eb3a53e444cdafb1d79e26c8ec2a8fcad28
+- kind: project-relative
+  target: copilot
+  value: .agents/skills/ponytail-debt
+  runtime: null
+  scope: project
+  owners:
+  - dietrichgebert/ponytail
+  active_owner: dietrichgebert/ponytail
+  content_hash: null
+- kind: project-relative
+  target: copilot
+  value: .agents/skills/ponytail-debt/SKILL.md
+  runtime: null
+  scope: project
+  owners:
+  - dietrichgebert/ponytail
+  active_owner: dietrichgebert/ponytail
+  content_hash: sha256:b5ec2762f6ba8c4af9ea7173aa6c9f91b88655a25e43f9de0264f6ce8722b25f
+- kind: project-relative
+  target: copilot
+  value: .agents/skills/ponytail-gain
+  runtime: null
+  scope: project
+  owners:
+  - dietrichgebert/ponytail
+  active_owner: dietrichgebert/ponytail
+  content_hash: null
+- kind: project-relative
+  target: copilot
+  value: .agents/skills/ponytail-gain/SKILL.md
+  runtime: null
+  scope: project
+  owners:
+  - dietrichgebert/ponytail
+  active_owner: dietrichgebert/ponytail
+  content_hash: sha256:231034a896d6762e4b5c8468287083422c56b499119976ec9f76821f7d083090
+- kind: project-relative
+  target: copilot
+  value: .agents/skills/ponytail-help
+  runtime: null
+  scope: project
+  owners:
+  - dietrichgebert/ponytail
+  active_owner: dietrichgebert/ponytail
+  content_hash: null
+- kind: project-relative
+  target: copilot
+  value: .agents/skills/ponytail-help/SKILL.md
+  runtime: null
+  scope: project
+  owners:
+  - dietrichgebert/ponytail
+  active_owner: dietrichgebert/ponytail
+  content_hash: sha256:86ab0ce0af70cbeeeef499d5c884873b393f87f86401dcc45553662ce2c1eff9
+- kind: project-relative
+  target: copilot
+  value: .agents/skills/ponytail-review
+  runtime: null
+  scope: project
+  owners:
+  - dietrichgebert/ponytail
+  active_owner: dietrichgebert/ponytail
+  content_hash: null
+- kind: project-relative
+  target: copilot
+  value: .agents/skills/ponytail-review/SKILL.md
+  runtime: null
+  scope: project
+  owners:
+  - dietrichgebert/ponytail
+  active_owner: dietrichgebert/ponytail
+  content_hash: sha256:33fe4ebe22a460924e5d4a261e223df22e409cc94ab76182bee9fb91a3ef022e
+- kind: project-relative
+  target: copilot
+  value: .agents/skills/ponytail/SKILL.md
+  runtime: null
+  scope: project
+  owners:
+  - dietrichgebert/ponytail
+  active_owner: dietrichgebert/ponytail
+  content_hash: sha256:9badd22a32e19cb884e46dfa8d3aae82bb81dfa5484105b8b4f0262df823a509
+- kind: project-relative
+  target: copilot
   value: .agents/skills/receiving-code-review
   runtime: null
   scope: project
@@ -2197,6 +2502,33 @@ deployments:
   - obra/superpowers
   active_owner: obra/superpowers
   content_hash: sha256:c7f412cc629461c4d10287e668731874c0497707023e3e3f74a5355eb2cee196
+- kind: project-relative
+  target: copilot
+  value: .github/agents/rust-specialist.agent.md
+  runtime: null
+  scope: project
+  owners:
+  - tylerbutler/agent-marketplace/plugins/rust
+  active_owner: tylerbutler/agent-marketplace/plugins/rust
+  content_hash: sha256:86e143344ba169cc88a42628191f1315792c577042f973e59f0d725bf7cb65fe
+- kind: project-relative
+  target: copilot
+  value: .github/agents/rust-verifier.agent.md
+  runtime: null
+  scope: project
+  owners:
+  - tylerbutler/agent-marketplace/plugins/rust
+  active_owner: tylerbutler/agent-marketplace/plugins/rust
+  content_hash: sha256:b7587fdf320b5e17bec83a555c191484449a1aa915f67b8d97bd95a4edab2ade
+- kind: project-relative
+  target: copilot
+  value: .github/hooks/ponytail-copilot-hooks.json
+  runtime: null
+  scope: project
+  owners:
+  - dietrichgebert/ponytail
+  active_owner: dietrichgebert/ponytail
+  content_hash: sha256:692b5148c3605d2ece2f081834b650c3c43d75cb272a7884dc40e9ce4425ef79
 - kind: project-relative
   target: copilot
   value: .github/hooks/scripts/superpowers/hooks/run-hook.cmd

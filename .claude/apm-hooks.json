@@ -1,6 +1,18 @@
 {
   "SessionStart": [
     {
+      "matcher": "startup|resume|clear|compact",
+      "hooks": [
+        {
+          "type": "command",
+          "statusMessage": "Loading ponytail mode...",
+          "command": "node -e \"require(require('path').join(process.env.CLAUDE_PLUGIN_ROOT.split(String.fromCharCode(92)).join('/'), 'hooks/ponytail-activate.js'))\"",
+          "timeout": 15
+        }
+      ],
+      "_apm_source": "dietrichgebert/ponytail"
+    },
+    {
       "matcher": "startup|clear|compact",
       "hooks": [
         {
@@ -11,6 +23,34 @@
         }
       ],
       "_apm_source": "obra/superpowers"
+    }
+  ],
+  "SubagentStart": [
+    {
+      "matcher": "*",
+      "hooks": [
+        {
+          "type": "command",
+          "statusMessage": "Loading ponytail mode...",
+          "command": "node -e \"require(require('path').join(process.env.CLAUDE_PLUGIN_ROOT.split(String.fromCharCode(92)).join('/'), 'hooks/ponytail-subagent.js'))\"",
+          "timeout": 15
+        }
+      ],
+      "_apm_source": "dietrichgebert/ponytail"
+    }
+  ],
+  "UserPromptSubmit": [
+    {
+      "matcher": "*",
+      "hooks": [
+        {
+          "type": "command",
+          "statusMessage": "Tracking ponytail mode...",
+          "command": "node -e \"require(require('path').join(process.env.CLAUDE_PLUGIN_ROOT.split(String.fromCharCode(92)).join('/'), 'hooks/ponytail-mode-tracker.js'))\"",
+          "timeout": 15
+        }
+      ],
+      "_apm_source": "dietrichgebert/ponytail"
     }
   ]
 }
