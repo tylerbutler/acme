@@ -151,6 +151,125 @@ fn sync_creates_sorted_hashed_inventory_and_second_sync_is_a_noop() {
 }
 
 #[test]
+fn rejected_version_pins_block_sync_and_check_without_writes() {
+    for owned in [false, true] {
+        let workspace = Workspace::new();
+        if owned {
+            workspace.sync();
+        }
+        for pin in ["0.0.1", "HEAD", "latest", "^0.1.0", "v0.1.0", "0.1.0 "] {
+            workspace.change(|config| {
+                config["toolchain"]["acme"]["bootstrap"] = false.into();
+                config["toolchain"]["acme"]["target_version"] = pin.into();
+                config["modules"]["ci"]["step_names"][0] = "Changed step".into();
+            });
+            let before = tree(&workspace.0);
+            for args in [&["sync"][..], &["sync", "--check"][..]] {
+                fails(&workspace.run(args), "toolchain.acme.target_version");
+                assert_eq!(tree(&workspace.0), before);
+                assert_eq!(workspace.0.join(".github").exists(), owned);
+            }
+        }
+    }
+}
+
+#[test]
+fn bootstrap_sync_keeps_bypassing_version_enforcement() {
+    let workspace = Workspace::new();
+    workspace.change(|config| {
+        config["toolchain"]["acme"]["bootstrap"] = true.into();
+        config["toolchain"]["acme"]["target_version"] = "HEAD".into();
+    });
+    workspace.sync();
+    let before = tree(&workspace.0);
+    succeeds(&workspace.run(&["sync", "--check"]));
+    workspace.sync();
+    assert_eq!(tree(&workspace.0), before);
+}
+
+#[test]
+fn controlled_version_upgrade_syncs_then_repeats_without_changes() {
+    for output_changed in [false, true] {
+        let workspace = Workspace::new();
+        workspace.sync();
+        let mut old_bytes = fs::read_to_string(workspace.0.join(RECORD))
+            .unwrap()
+            .replace(
+                &format!("\"acme_version\": \"{}\"", env!("CARGO_PKG_VERSION")),
+                "\"acme_version\": \"0.0.1\"",
+            );
+        if output_changed {
+            let old_ci = fs::read_to_string(workspace.0.join(CI))
+                .unwrap()
+                .replace("name: Check formatting", "name: Legacy formatting");
+            fs::write(workspace.0.join(CI), &old_ci).unwrap();
+            let old_record = workspace.record();
+            let entry = old_record["entries"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|entry| entry["path"] == CI)
+                .unwrap();
+            old_bytes = old_bytes.replace(
+                entry["sha256"].as_str().unwrap(),
+                &format!("{:x}", Sha256::digest(old_ci.as_bytes())),
+            );
+        }
+        fs::write(workspace.0.join(RECORD), &old_bytes).unwrap();
+        workspace.change(|config| {
+            config["toolchain"]["acme"]["bootstrap"] = false.into();
+            config["toolchain"]["acme"]["target_version"] = "0.0.1".into();
+            if output_changed {
+                config["modules"]["ci"]["step_names"][0] = "Legacy formatting".into();
+            }
+        });
+        let old_tree = tree(&workspace.0);
+        fails(&workspace.run(&["sync"]), "toolchain.acme.target_version");
+        assert_eq!(tree(&workspace.0), old_tree);
+
+        workspace.change(|config| {
+            config["toolchain"]["acme"]["target_version"] = env!("CARGO_PKG_VERSION").into();
+            config["modules"]["ci"]["step_names"][0] = "Check formatting".into();
+        });
+        let before = tree(&workspace.0);
+        let check = workspace.run(&["sync", "--check"]);
+        fails(&check, "drift");
+        let mut expected = String::new();
+        if output_changed {
+            expected.push_str(&format!("update {CI}\n"));
+        }
+        expected.push_str(&format!("update {RECORD}\n"));
+        assert_eq!(String::from_utf8(check.stdout).unwrap(), expected);
+        assert_eq!(tree(&workspace.0), before);
+
+        workspace.sync();
+        assert_eq!(
+            fs::read(workspace.0.join(CI)).unwrap(),
+            include_bytes!("../.github/workflows/ci.yml")
+        );
+        assert_eq!(
+            workspace.record()["acme_version"],
+            env!("CARGO_PKG_VERSION")
+        );
+        if !output_changed {
+            let expected_record = old_bytes.replace(
+                "\"acme_version\": \"0.0.1\"",
+                &format!("\"acme_version\": \"{}\"", env!("CARGO_PKG_VERSION")),
+            );
+            let mut expected_tree = before;
+            expected_tree.insert(RECORD.into(), expected_record.into_bytes());
+            assert_eq!(tree(&workspace.0), expected_tree);
+        }
+        let upgraded = tree(&workspace.0);
+        let second = workspace.run(&["sync"]);
+        succeeds(&second);
+        assert_eq!(second.stdout, b"Sync is clean.\n");
+        succeeds(&workspace.run(&["sync", "--check"]));
+        assert_eq!(tree(&workspace.0), upgraded);
+    }
+}
+
+#[test]
 fn matching_hand_built_files_are_adopted_but_check_does_not_adopt() {
     let workspace = Workspace::new();
     let config = acme::FactoryConfig::from_toml(FACTORY).unwrap();

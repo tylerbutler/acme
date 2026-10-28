@@ -160,6 +160,16 @@ fn module_enabled(
 }
 
 fn validate_config(config: &FactoryConfig) -> Result<(), RenderPlanError> {
+    let acme = &config.toolchain.acme;
+    if !acme.bootstrap && acme.target_version != env!("CARGO_PKG_VERSION") {
+        return Err(RenderPlanError(format!(
+            "toolchain.acme.target_version {:?} must be a concrete version matching running acme {}; use {:?} (tag v{}) or install the binary matching the approved pin",
+            acme.target_version,
+            env!("CARGO_PKG_VERSION"),
+            env!("CARGO_PKG_VERSION"),
+            env!("CARGO_PKG_VERSION"),
+        )));
+    }
     if config.profile != "cli" || config.languages != ["rust"] {
         return Err(RenderPlanError(
             "unsupported render preset: require profile cli and languages [rust]".to_owned(),

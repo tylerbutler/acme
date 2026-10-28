@@ -8,6 +8,64 @@ fn config() -> FactoryConfig {
 }
 
 #[test]
+fn non_bootstrap_pin_must_match_the_running_version_in_both_planners() {
+    let mut config = config();
+    config.toolchain.acme.bootstrap = false;
+    config.toolchain.acme.target_version = env!("CARGO_PKG_VERSION").to_owned();
+    let plan = build_render_plan(&config).unwrap();
+    assert_eq!(plan.acme_version, env!("CARGO_PKG_VERSION"));
+    assert_eq!(
+        plan,
+        build_render_plan_with_catalog(&config, builtin_modules()).unwrap()
+    );
+
+    for pin in [
+        "0.0.1",
+        "99.0.0",
+        "",
+        "HEAD",
+        "latest",
+        "*",
+        "^0.1.0",
+        "~0.1.0",
+        ">=0.1.0",
+        "0.1",
+        "v0.1.0",
+        "00.1.0",
+        "0.01.0",
+        "0.1.00",
+        " 0.1.0",
+        "0.1.0 ",
+        "0.1.0\n",
+        "0.1.0-rc.1",
+        "0.1.0+build",
+    ] {
+        config.toolchain.acme.target_version = pin.to_owned();
+        for result in [
+            build_render_plan(&config),
+            build_render_plan_with_catalog(&config, builtin_modules()),
+        ] {
+            let error = result.unwrap_err().to_string();
+            assert!(error.contains("toolchain.acme.target_version"), "{error}");
+            assert!(error.contains(env!("CARGO_PKG_VERSION")), "{error}");
+        }
+    }
+}
+
+#[test]
+fn bootstrap_keeps_treating_the_pin_as_a_build_target() {
+    let mut config = config();
+    config.toolchain.acme.bootstrap = true;
+    for pin in ["HEAD", "latest", "", "99.0.0"] {
+        config.toolchain.acme.target_version = pin.to_owned();
+        assert_eq!(
+            build_render_plan(&config).unwrap().acme_version,
+            env!("CARGO_PKG_VERSION")
+        );
+    }
+}
+
+#[test]
 fn plan_is_stable_and_orders_modules_paths_and_template_inputs() {
     let config = config();
     let plan = build_render_plan(&config).unwrap();

@@ -3,9 +3,9 @@
 ## What is installed
 
 This is the M0 hand-built factory. Files in `.github/`, `AGENTS.md` and the
-approved draft in `factory/factory.toml` are future renderer fixtures. There is
-no renderer yet. Doctor checks supported local assets and remote settings.
-Keep local config and fixtures consistent by hand.
+approved draft in `factory/factory.toml` are renderer fixtures. Render produces
+the deterministic M2 inventory. Sync can adopt exact matching files with separate
+owner approval. Doctor checks supported local assets and remote settings.
 
 The `main` ruleset requires a PR, the GitHub Actions `CI` check, an up-to-date
 branch and resolved review threads. It has zero required approvals and no
@@ -219,7 +219,8 @@ credits.
 - Live Intake label/comment writes were not exercised in this build loop.
   [Staged Intake](https://github.com/tylerbutler/acme/actions/runs/40277232574)
   passed separately.
-- No release pin: there is no released CLI. `target_version` is not an install pin.
+- The live config still uses bootstrap mode. Its `target_version` is a build
+  target, not an enforced install pin.
 - No automated review. Copilot will run review with a different model from build.
 - No enforceable agent-author/path gate yet. CODEOWNERS and risk paths document
   the policy; they do not enforce it. M2 must add the policy check.
@@ -227,6 +228,58 @@ credits.
   not a platform-enforced timeout.
 - No holdout, build-local, release, ops, merge queue or second template repo.
 
-Before adoption, run the future renderer against this config until the fixtures
-have zero diff. Then run doctor and sync. Build the first release by hand and
-replace the bootstrap marker with a tagged stage0 pin, never HEAD.
+## Owner-only stage0 adoption
+
+Only the owner may build and tag stage0, approve the non-bootstrap pin, and
+adopt the live factory. Agents must not publish releases or change the live
+bootstrap flag. A tag alone does not prove adoption.
+
+1. Select a reviewed, human-merged revision. Use the pinned Rust toolchain.
+   Run `just check`, then build the binary by hand:
+
+   ```sh
+   cargo build --locked --release --bin acme
+   ```
+
+   Record the source revision, `Cargo.toml` package version, toolchain and build
+   result. Preserve the resulting binary outside the build directory.
+2. Verify that the package version is the intended concrete version. The owner
+   publishes the corresponding `v<target_version>` tag on that exact revision.
+   If the tag already exists, verify its revision; never move it to newer code.
+   Changes after stage0 require a new version and tag. There is no release
+   automation, self-update or automatic download.
+3. Install that exact binary explicitly. In a reviewed config change, set
+   `[toolchain.acme]` to `bootstrap = false` and set `target_version` to its
+   package version, without `v`. Keep `schema_version = 0` and all unrelated
+   settings unchanged. For example, a binary built as `0.1.0` uses the real
+   tag `v0.1.0` and pin `"0.1.0"`, not HEAD, `latest` or a range.
+4. With the installed binary, render the approved config into a fresh temporary
+   directory:
+
+   ```sh
+   preview=$(mktemp -d)
+   acme render --config factory/factory.toml --output "$preview"
+   ```
+
+   Compare every rendered file with its matching checkout path using raw bytes.
+   Include hidden `.github` paths. The current inventory is the CI workflow,
+   Rust setup action, labels, ruleset and four issue-form files.
+   Require zero golden diff for initial adoption. Do not copy unexpected output
+   over reviewed fixtures. Resolve incompatible schema or module contracts
+   through a reviewed migration before retrying; do not bypass validation.
+5. Inspect `acme sync --check`. An initial ownership-record change is expected
+   and makes check mode fail. Resolve any conflict manually. Approve and run
+   `acme sync`, then run `acme sync --check` again. The second check must succeed
+   without output or metadata drift.
+6. Approve and run read-only `acme doctor` with authenticated `gh`. Do not pass
+   `--fix`. Record the installed binary's version and source revision, tag,
+   golden comparison, sync reports and doctor report. Missing credentials or
+   unresolved checks mean adoption is not verified.
+7. Review the pin and `factory/managed-files.json` diff. Human-merge the adoption
+   changes only after the checks pass. Only then claim self-hosting adoption.
+
+For an upgrade, approve a new concrete config pin and explicitly install the
+matching tagged binary. Render, review the output diff, sync, check again and
+run read-only doctor. Unchanged outputs may require only an ownership-record
+version change. The next sync must be a no-op. Do not edit recorded hashes to
+override modified owned files.
