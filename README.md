@@ -7,8 +7,9 @@ It does not call an LLM. An agent skill will conduct the init interview.
 **Status: M0 factory loop verified.** The factory is hand-built. `doctor` runs
 read-only checks against the local module assets and the GitHub repository named
 in the config. It requires an authenticated `gh` CLI. `render` writes the
-deterministic M2 inventory to a new or empty directory. `init` and `sync`
-are not implemented and fail explicitly. Automatic dispatch is paused.
+deterministic M2 inventory to a new or empty directory. `sync` updates only
+validated M2 inventory paths in the current repository. `init` is not
+implemented and fails explicitly. Automatic dispatch is paused.
 
 ## Development
 
@@ -18,6 +19,7 @@ just check
 cargo run -- doctor
 cargo run -- doctor --config path/to/factory.toml
 cargo run --bin acme -- render --output /tmp/acme-render
+cargo run --bin acme -- sync --check
 ```
 
 Rust is pinned in `rust-toolchain.toml`. Python 3 is used for the bootstrap
@@ -37,13 +39,42 @@ Doctor validates the complete plan before writes, then reads fresh state and
 runs the same checks. A second fix makes no writes if supported settings match.
 A failed write stops further writes. Partial changes and failed verification
 remain failures; doctor does not promise rollback. Local drift needs a reviewed
-edit until M3. Unrelated labels and rulesets remain unchanged. Duplicate managed
-rulesets need manual resolution.
+edit or local sync within the ownership rules below. Unrelated labels and
+rulesets remain unchanged. Duplicate managed rulesets need manual resolution.
 
 Fix does not provision secrets or change workflow enablement, variable gates,
 staging, budgets, assignments or issue state. It never runs the bootstrap script.
 See the [owner-only M2 acceptance procedure](docs/bootstrap.md#owner-only-m2-acceptance).
 Implementation and fake-state tests do not establish the live M2 exit check.
+
+### Local sync
+
+`acme sync [--check] [--config PATH]` uses the same config and render plan as
+`render`. Check mode lists path-sorted creates, updates and removals, followed
+by any ownership-record change. It exits unsuccessfully on output or metadata
+drift and does not write files or create directories.
+
+Sync keeps deterministic bookkeeping at `factory/managed-files.json`, with
+format version 1, the generating acme version, and path-sorted module, path
+and lowercase SHA256 entries. A first sync adopts existing files only if their
+bytes match rendered output. Owned files must match their recorded hash before
+update or removal. Missing owned outputs are recreated; missing obsolete
+outputs are dropped from the record. Disabled modules lose only their recorded,
+unmodified outputs. Unowned files and parent directories remain.
+
+Sync validates the complete plan, record and affected paths before writes.
+It rejects unknown record fields, owners and paths, unsupported record formats,
+duplicates, invalid hashes, symlink components and non-regular file targets.
+It stages each replacement in a new sibling file, then renames it. It writes the
+record last. An I/O error stops sync and reports partial application; there is
+no rollback. Resolve partial changes by hand before retrying. Do not run sync
+with concurrent checkout writers: these checks are not a race-proof filesystem
+sandbox. Sync is local; it does not run doctor, provision settings or compile
+agent workflows. Config version-pin enforcement remains M3 slice D.
+
+The live factory has not been adopted by this implementation. Live adoption
+requires the separate owner-approved release and pin procedure in the
+[M3 spec](docs/specs/0004-m3-render-sync-contract.md#version-contract).
 
 ### Local rendering
 

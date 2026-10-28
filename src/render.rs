@@ -3,7 +3,9 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
 
 mod output;
+mod sync;
 pub use output::{RenderError, render_to_directory};
+pub use sync::{SyncError, SyncReport, sync_repository};
 
 #[derive(Debug, Eq, PartialEq)]
 pub struct RenderPlan {

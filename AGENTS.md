@@ -12,8 +12,17 @@ The CLI renders only approved config.
 The factory is hand-built. `doctor` is implemented as a read-only check of
 supported local assets and GitHub settings. It reads and validates the M1
 config before checks. `render --output DIR` writes the deterministic M2 inventory
-to a new or empty directory. `init` and `sync` are not implemented, and the
-binary must not report success for them. Explicit `doctor --fix` repairs
+to a new or empty directory. `sync [--check] [--config PATH]` synchronizes only
+validated M2 inventory paths and records hashes in `factory/managed-files.json`.
+Check mode writes nothing and fails on output or metadata drift. Sync adopts
+only exact rendered bytes and checks owned hashes before updates or removals.
+Missing owned outputs are recreated. It rejects unsafe records, symlinks and
+non-regular targets before writes. Replacements use staged sibling files;
+the record is written last. I/O errors can leave partial output changes with
+the old record; sync does not promise rollback or protection against concurrent
+checkout writers. Live adoption needs separate owner approval. Version-pin
+enforcement remains slice D. `init` is not implemented and must fail explicitly.
+Explicit `doctor --fix` repairs
 supported remote drift after plan validation and then runs fresh checks.
 M3 rendering is the current priority. Automatic dispatch (specs 0010 and 0011)
 is paused; do not extend the coordinator, claims or claim store unless the owner
@@ -44,6 +53,7 @@ Architecture decisions are in `docs/adr/`.
 cargo run -- doctor
 cargo run -- doctor --config path/to/factory.toml
 cargo run --bin acme -- render --output /tmp/acme-render
+cargo run --bin acme -- sync --check
 just build
 just test
 just lint
