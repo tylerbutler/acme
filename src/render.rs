@@ -2,6 +2,9 @@ use crate::{BuiltinModule, ConfigBinding, FactoryConfig, ModuleManifest, builtin
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
 
+mod output;
+pub use output::{RenderError, render_to_directory};
+
 #[derive(Debug, Eq, PartialEq)]
 pub struct RenderPlan {
     pub acme_version: &'static str,
@@ -106,7 +109,7 @@ pub fn build_render_plan_with_catalog(
                 plan.outputs.push(PlannedOutput {
                     module: name.clone(),
                     path: asset.output_path,
-                    template: asset.contents,
+                    template: asset.template(),
                     inputs: TemplateInputs::Static,
                 });
             }

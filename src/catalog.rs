@@ -10,7 +10,21 @@ pub enum ConfigBinding {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct ModuleAsset {
     pub output_path: &'static str,
+    /// Keep the reviewed M2 bytes for doctor checks. Render plans use `template()`.
     pub contents: &'static [u8],
+}
+
+impl ModuleAsset {
+    #[must_use]
+    pub fn template(&self) -> &'static [u8] {
+        match self.output_path {
+            ".github/workflows/ci.yml" => include_bytes!("../modules/ci/assets/ci.yml.tmpl"),
+            ".github/rulesets/main.json" => {
+                include_bytes!("../modules/ruleset/assets/main.json.tmpl")
+            }
+            _ => self.contents,
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

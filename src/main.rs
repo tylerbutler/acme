@@ -23,6 +23,9 @@ fn run() -> Result<(), String> {
     let Some(command) = args.next() else {
         return Err("acme requires a command.".to_owned());
     };
+    if command == "render" {
+        return render(args);
+    }
     if command != "doctor" {
         return Err(format!("acme {command} is not implemented."));
     }
@@ -58,6 +61,30 @@ fn run() -> Result<(), String> {
     } else {
         Err("doctor found drift or could not complete all checks.".to_owned())
     }
+}
+
+fn render(mut args: impl Iterator<Item = String>) -> Result<(), String> {
+    let mut config_path = PathBuf::from("factory/factory.toml");
+    let mut destination = None;
+    while let Some(argument) = args.next() {
+        if !matches!(argument.as_str(), "--config" | "--output") {
+            return Err(format!("unknown render argument: {argument}"));
+        }
+        let path = args
+            .next()
+            .filter(|path| !path.starts_with("--") && !path.is_empty())
+            .ok_or_else(|| format!("{argument} requires a path."))?;
+        if argument == "--config" {
+            config_path = PathBuf::from(path);
+        } else if destination.replace(PathBuf::from(path)).is_some() {
+            return Err("--output must be specified once.".to_owned());
+        }
+    }
+    let destination = destination.ok_or("render requires --output DIR.")?;
+    let config = FactoryConfig::load(&config_path).map_err(|error| error.to_string())?;
+    acme::render::render_to_directory(&config, &destination).map_err(|error| error.to_string())?;
+    println!("Rendered approved config to {}.", destination.display());
+    Ok(())
 }
 
 struct GhTransport;
