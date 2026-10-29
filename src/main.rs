@@ -29,6 +29,9 @@ fn run() -> Result<(), String> {
     if command == "sync" {
         return sync(args);
     }
+    if command == "init" {
+        return init(args);
+    }
     if command != "doctor" {
         return Err(format!("acme {command} is not implemented."));
     }
@@ -64,6 +67,49 @@ fn run() -> Result<(), String> {
     } else {
         Err("doctor found drift or could not complete all checks.".to_owned())
     }
+}
+
+fn init(mut args: impl Iterator<Item = String>) -> Result<(), String> {
+    let mut config_path = None;
+    while let Some(argument) = args.next() {
+        if argument != "--config" {
+            return Err(format!("unknown init argument: {argument}"));
+        }
+        let path = args
+            .next()
+            .filter(|path| !path.starts_with("--") && !path.is_empty())
+            .ok_or("--config requires a path.")?;
+        if config_path.replace(PathBuf::from(path)).is_some() {
+            return Err("--config must be specified once.".to_owned());
+        }
+    }
+    let config_path = config_path.unwrap_or_else(|| PathBuf::from("factory/factory.toml"));
+    let root =
+        env::current_dir().map_err(|error| format!("failed to get current directory: {error}"))?;
+    let report =
+        acme::render::init_repository(&root, &config_path).map_err(|error| error.to_string())?;
+    print!("{report}");
+    let mut paths: Vec<_> = report
+        .outputs
+        .iter()
+        .map(String::as_str)
+        .chain(["factory/factory.toml", "factory/managed-files.json"])
+        .collect();
+    paths.sort_unstable();
+    paths.dedup();
+    let stage_paths = paths.join(" ");
+    println!(
+        "Init prepared local files only. Review before publishing:\n\
+         git diff\n\
+         git ls-files --others --exclude-standard\n\
+         git switch -c factory-init\n\
+         git add -- {stage_paths}\n\
+         git diff --cached\n\
+         git commit -m \"chore: initialize factory\"\n\
+         gh pr create --draft\n\
+         No provisioning or agent activation was performed."
+    );
+    Ok(())
 }
 
 fn sync(mut args: impl Iterator<Item = String>) -> Result<(), String> {

@@ -1,4 +1,4 @@
-use super::{build_render_plan, output::render_output};
+use super::{build_render_plan, init, output::render_output};
 use crate::{FactoryConfig, builtin_modules};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -12,7 +12,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 const RECORD: &str = "factory/managed-files.json";
 
 #[derive(Debug)]
-pub struct SyncError(String);
+pub struct SyncError(pub(super) String);
 
 impl fmt::Display for SyncError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -24,6 +24,8 @@ impl std::error::Error for SyncError {}
 
 #[derive(Debug)]
 pub struct SyncReport {
+    /// All planned output paths, including exact-byte adoptions.
+    pub outputs: Vec<String>,
     pub creates: Vec<String>,
     pub updates: Vec<String>,
     pub removals: Vec<String>,
@@ -87,6 +89,36 @@ pub fn sync_repository(
     root: &Path,
     check: bool,
 ) -> Result<SyncReport, SyncError> {
+    synchronize(config, root, check, None)
+}
+
+/// Initialize from explicitly approved bytes without replacing existing config.
+///
+/// Resolve relative config paths against the repository root.
+/// I/O failures can leave partial changes. Init writes the record last.
+pub fn init_repository(root: &Path, config_path: &Path) -> Result<SyncReport, SyncError> {
+    let source = root.join(config_path);
+    let path = std::path::absolute(&source).map_err(|error| io_error(&source, &error))?;
+    if path.components().any(|part| part == Component::ParentDir) {
+        return Err(SyncError(
+            "config path must not contain parent (..) components".to_owned(),
+        ));
+    }
+    let bytes = read_regular(&path)?
+        .ok_or_else(|| SyncError(format!("missing approved config: {}", path.display())))?;
+    let text = std::str::from_utf8(&bytes)
+        .map_err(|error| SyncError(format!("approved config is not UTF-8: {error}")))?;
+    let config = FactoryConfig::from_toml(text).map_err(|error| SyncError(error.to_string()))?;
+    init::validate_config(&config)?;
+    synchronize(&config, root, false, Some(&bytes))
+}
+
+fn synchronize(
+    config: &FactoryConfig,
+    root: &Path,
+    check: bool,
+    init_config: Option<&[u8]>,
+) -> Result<SyncReport, SyncError> {
     let plan = build_render_plan(config).map_err(|error| SyncError(error.to_string()))?;
     let root = std::path::absolute(root).map_err(|error| io_error(root, &error))?;
     if root.components().any(|part| part == Component::ParentDir) {
@@ -101,6 +133,10 @@ pub fn sync_repository(
         ));
     }
     let record_path = root.join(RECORD);
+    let mut changes = BTreeMap::new();
+    if let Some(bytes) = init_config {
+        prepare_init(config, &root, bytes, &mut changes)?;
+    }
     let old_bytes = read_regular(&record_path)?;
     let old = read_record(old_bytes.as_deref())?;
     let mut desired = BTreeMap::new();
@@ -114,7 +150,6 @@ pub fn sync_repository(
         });
         desired.insert(output.path.to_owned(), bytes);
     }
-    let mut changes = BTreeMap::new();
     for entry in old {
         let before = read_regular(&root.join(&entry.path))?;
         if let Some(bytes) = &before {
@@ -151,6 +186,11 @@ pub fn sync_repository(
         .map_err(|error| SyncError(format!("cannot encode ownership record: {error}")))?;
     new_bytes.push(b'\n');
     let mut report = SyncReport {
+        outputs: plan
+            .outputs
+            .iter()
+            .map(|output| output.path.to_owned())
+            .collect(),
         creates: Vec::new(),
         updates: Vec::new(),
         removals: Vec::new(),
@@ -174,6 +214,42 @@ pub fn sync_repository(
         report.metadata_changed.then_some(new_bytes.as_slice()),
     )?;
     Ok(report)
+}
+
+fn prepare_init(
+    config: &FactoryConfig,
+    root: &Path,
+    bytes: &[u8],
+    changes: &mut BTreeMap<String, Change>,
+) -> Result<(), SyncError> {
+    let record_path = root.join(RECORD);
+    check_directories(record_path.parent().expect("record has a parent"))?;
+    match fs::symlink_metadata(&record_path) {
+        Ok(_) => {
+            return Err(SyncError(
+                "project already has an ownership record; use acme sync after review".to_owned(),
+            ));
+        }
+        Err(error) if error.kind() == io::ErrorKind::NotFound => {}
+        Err(error) => return Err(io_error(&record_path, &error)),
+    }
+    init::preflight(config, root)?;
+    let before = read_regular(&root.join("factory/factory.toml"))?;
+    if before.as_deref().is_some_and(|existing| existing != bytes) {
+        return Err(SyncError(
+            "conflicting approved config: factory/factory.toml".to_owned(),
+        ));
+    }
+    if before.is_none() {
+        changes.insert(
+            "factory/factory.toml".to_owned(),
+            Change {
+                before,
+                after: Some(bytes.to_vec()),
+            },
+        );
+    }
+    Ok(())
 }
 
 fn apply_changes(
@@ -295,7 +371,7 @@ fn check_directories(path: &Path) -> Result<(), SyncError> {
     Ok(())
 }
 
-fn read_regular(path: &Path) -> Result<Option<Vec<u8>>, SyncError> {
+pub(super) fn read_regular(path: &Path) -> Result<Option<Vec<u8>>, SyncError> {
     check_directories(path.parent().expect("sync file has a parent"))?;
     match fs::symlink_metadata(path) {
         Ok(metadata) if metadata.is_symlink() => {

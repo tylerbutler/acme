@@ -22,7 +22,9 @@ the record is written last. I/O errors can leave partial output changes with
 the old record; sync does not promise rollback or protection against concurrent
 checkout writers. Live adoption needs separate owner approval. Outside bootstrap
 mode, render and sync require a concrete version pin that matches the binary
-before writes. `init` is not implemented and must fail explicitly.
+before writes. `init` prepares a local change set from approved config for a
+supported Rust CLI project. It rejects configured projects and directs them to
+sync. It does not activate agent stages or perform remote operations.
 Explicit `doctor --fix` repairs
 supported remote drift after plan validation and then runs fresh checks.
 M3 rendering is the current priority. Automatic dispatch (specs 0010 and 0011)
