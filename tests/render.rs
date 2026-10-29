@@ -36,6 +36,12 @@ const GOLDENS: &[(&str, &[u8])] = &[
     (CI, include_bytes!("../.github/workflows/ci.yml")),
 ];
 
+fn config() -> toml::Value {
+    let mut config: toml::Value = toml::from_str(FACTORY).unwrap();
+    config["toolchain"]["acme"]["target_version"] = env!("CARGO_PKG_VERSION").into();
+    config
+}
+
 struct Workspace(PathBuf);
 
 impl Workspace {
@@ -48,7 +54,11 @@ impl Workspace {
         ));
         fs::create_dir(&path).unwrap();
         fs::create_dir(path.join("factory")).unwrap();
-        fs::write(path.join("factory/factory.toml"), FACTORY).unwrap();
+        fs::write(
+            path.join("factory/factory.toml"),
+            toml::to_string(&config()).unwrap(),
+        )
+        .unwrap();
         Self(path)
     }
 
@@ -63,7 +73,7 @@ impl Workspace {
     }
 
     fn changed(&self, change: impl FnOnce(&mut toml::Value)) -> BTreeMap<String, Vec<u8>> {
-        let mut config: toml::Value = toml::from_str(FACTORY).unwrap();
+        let mut config = config();
         change(&mut config);
         fs::write(
             self.0.join("factory/factory.toml"),
@@ -159,7 +169,9 @@ fn matching_pin_and_bootstrap_bypass_render_the_golden_inventory() {
 
 #[test]
 fn rejected_version_pins_leave_missing_and_empty_destinations_untouched() {
-    for pin in ["0.0.1", "HEAD", "latest", "^0.1.0", "v0.1.0", "0.1.0 "] {
+    for pin in [
+        "0.0.1", "0.1.0", "HEAD", "latest", "^0.1.0", "v0.1.0", "0.1.0 ",
+    ] {
         for exists in [false, true] {
             let workspace = Workspace::new();
             let mut config: toml::Value = toml::from_str(FACTORY).unwrap();
@@ -453,10 +465,11 @@ fn symlink_destinations_and_ancestors_are_rejected_before_writes() {
 #[test]
 fn invalid_config_or_plan_fails_before_creating_the_destination() {
     let workspace = Workspace::new();
+    let fixture = fs::read_to_string(workspace.0.join("factory/factory.toml")).unwrap();
     for config in [
         "schema_version = [".to_owned(),
-        FACTORY.replace("profile = \"cli\"", "profile = \"web\""),
-        FACTORY.replace(
+        fixture.replace("profile = \"cli\"", "profile = \"web\""),
+        fixture.replace(
             "needs = [\"approved-spec\", \"ci\"]",
             "needs = [\"missing\"]",
         ),

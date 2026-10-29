@@ -4,7 +4,9 @@ use acme::{ConfigBinding, FactoryConfig, ModuleAsset, builtin_modules};
 const FACTORY: &str = include_str!("../factory/factory.toml");
 
 fn config() -> FactoryConfig {
-    FactoryConfig::from_toml(FACTORY).unwrap()
+    let mut config = FactoryConfig::from_toml(FACTORY).unwrap();
+    env!("CARGO_PKG_VERSION").clone_into(&mut config.toolchain.acme.target_version);
+    config
 }
 
 #[test]
@@ -21,6 +23,7 @@ fn non_bootstrap_pin_must_match_the_running_version_in_both_planners() {
 
     for pin in [
         "0.0.1",
+        "0.1.0",
         "99.0.0",
         "",
         "HEAD",

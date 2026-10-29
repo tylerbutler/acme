@@ -34,6 +34,7 @@ impl Workspace {
         workspace.write("docs/specs/example.md", "# Authored spec\n");
         let mut config: toml::Value =
             toml::from_str(include_str!("../factory/factory.toml")).unwrap();
+        config["toolchain"]["acme"]["target_version"] = env!("CARGO_PKG_VERSION").into();
         for module in ["intake", "spec", "build_cloud"] {
             config["modules"][module]["enabled"] = false.into();
         }
@@ -315,6 +316,12 @@ fn invalid_config_contracts_fail_without_writes() {
         ("profile", "", "web".into(), "preset"),
         ("languages", "", vec!["python"].into(), "preset"),
         ("toolchain.acme", "bootstrap", true.into(), "bootstrap"),
+        (
+            "toolchain.acme",
+            "target_version",
+            "0.1.0".into(),
+            "target_version",
+        ),
         (
             "toolchain.acme",
             "target_version",

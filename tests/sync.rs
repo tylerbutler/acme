@@ -23,7 +23,13 @@ impl Workspace {
         ));
         fs::create_dir(&path).unwrap();
         fs::create_dir(path.join("factory")).unwrap();
-        fs::write(path.join("factory/factory.toml"), FACTORY).unwrap();
+        let mut config: toml::Value = toml::from_str(FACTORY).unwrap();
+        config["toolchain"]["acme"]["target_version"] = env!("CARGO_PKG_VERSION").into();
+        fs::write(
+            path.join("factory/factory.toml"),
+            toml::to_string(&config).unwrap(),
+        )
+        .unwrap();
         Self(path)
     }
 
@@ -157,7 +163,9 @@ fn rejected_version_pins_block_sync_and_check_without_writes() {
         if owned {
             workspace.sync();
         }
-        for pin in ["0.0.1", "HEAD", "latest", "^0.1.0", "v0.1.0", "0.1.0 "] {
+        for pin in [
+            "0.0.1", "0.1.0", "HEAD", "latest", "^0.1.0", "v0.1.0", "0.1.0 ",
+        ] {
             workspace.change(|config| {
                 config["toolchain"]["acme"]["bootstrap"] = false.into();
                 config["toolchain"]["acme"]["target_version"] = pin.into();
@@ -272,7 +280,7 @@ fn controlled_version_upgrade_syncs_then_repeats_without_changes() {
 #[test]
 fn matching_hand_built_files_are_adopted_but_check_does_not_adopt() {
     let workspace = Workspace::new();
-    let config = acme::FactoryConfig::from_toml(FACTORY).unwrap();
+    let config = acme::FactoryConfig::load(workspace.0.join("factory/factory.toml")).unwrap();
     let rendered = workspace.0.join("rendered");
     acme::render::render_to_directory(&config, &rendered).unwrap();
     fs::rename(rendered.join(".github"), workspace.0.join(".github")).unwrap();
@@ -700,7 +708,7 @@ fn staged_filename_collisions_never_replace_existing_files() {
     for path in &collisions {
         fs::write(path, "keep").unwrap();
     }
-    let config = acme::FactoryConfig::from_toml(FACTORY).unwrap();
+    let config = acme::FactoryConfig::load(workspace.0.join("factory/factory.toml")).unwrap();
     let error = acme::render::sync_repository(&config, &workspace.0, false).unwrap_err();
     assert!(error.to_string().contains("cannot reserve a staged file"));
     assert!(!workspace.0.join(RECORD).exists());
