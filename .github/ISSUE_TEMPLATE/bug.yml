@@ -21,13 +21,13 @@ body:
     id: acceptance
     attributes:
       label: Acceptance scenarios
-      description: State how to verify the fix and which regression cases must pass.
+      description: Give three to five checks for the fix and its regression cases.
     validations:
       required: true
   - type: textarea
     id: non-goals
     attributes:
       label: Non-goals
-      description: State what this fix must not change.
+      description: State what this fix must not change. AGENTS.md rules always apply; do not repeat them.
     validations:
       required: true

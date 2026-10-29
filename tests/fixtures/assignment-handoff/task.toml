@@ -1,0 +1,13 @@
+version = 1
+repository = "proof/acme"
+issue = 17
+kind = "implementation"
+prerequisites = []
+
+[spec]
+path = "docs/specs/0010-spec-dispatch-coordinator.md"
+sha256 = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+
+[issue_body]
+content = "Implement only the approved offline fixture.\n"
+sha256 = "7f6d3d5a69440813cca1f19e540fc90c845fb21ee27db7f182cc4459b1a860aa"

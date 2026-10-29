@@ -1,3 +1,4 @@
+use schemars::JsonSchema;
 use serde::Deserialize;
 use std::error::Error;
 use std::fmt;
@@ -9,6 +10,7 @@ use std::path::{Path, PathBuf};
 pub struct FactoryConfig {
     pub schema_version: u32,
     pub repository: String,
+    pub coordinator: CoordinatorConfig,
     pub profile: String,
     pub languages: Vec<String>,
     pub autonomy: String,
@@ -21,11 +23,14 @@ pub struct FactoryConfig {
     pub bootstrap: BootstrapConfig,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 struct RawFactoryConfig {
+    #[schemars(range(min = 0, max = 0))]
     schema_version: u32,
     repository: String,
+    #[serde(default)]
+    coordinator: CoordinatorConfig,
     profile: String,
     languages: Vec<String>,
     autonomy: String,
@@ -36,6 +41,11 @@ struct RawFactoryConfig {
     modules: ModulesConfig,
     risk: RiskConfig,
     bootstrap: BootstrapConfig,
+}
+
+#[must_use]
+pub fn factory_schema() -> schemars::schema::RootSchema {
+    schemars::schema_for!(RawFactoryConfig)
 }
 
 impl FactoryConfig {
@@ -56,6 +66,7 @@ impl FactoryConfig {
         let config = Self {
             schema_version: parsed.schema_version,
             repository: parsed.repository,
+            coordinator: parsed.coordinator,
             profile: parsed.profile,
             languages: parsed.languages,
             autonomy: parsed.autonomy,
@@ -82,6 +93,19 @@ impl FactoryConfig {
 
         Ok(config)
     }
+}
+
+#[derive(Clone, Debug, Default, Deserialize, Eq, JsonSchema, PartialEq)]
+#[serde(deny_unknown_fields)]
+pub struct CoordinatorConfig {
+    #[serde(default)]
+    pub automatic_dispatch: bool,
+    #[serde(default)]
+    pub max_active_tasks: u32,
+    #[serde(default)]
+    pub max_assignments_per_reconciliation: u32,
+    #[serde(default)]
+    pub max_attempts: u32,
 }
 
 #[derive(Debug)]
@@ -123,27 +147,27 @@ impl Error for ConfigError {
     }
 }
 
-#[derive(Debug, Deserialize, Eq, PartialEq)]
+#[derive(Debug, Deserialize, Eq, JsonSchema, PartialEq)]
 #[serde(deny_unknown_fields)]
 pub struct ToolchainConfig {
     pub acme: AcmeToolchainConfig,
     pub gh_aw: GhAwToolchainConfig,
 }
 
-#[derive(Debug, Deserialize, Eq, PartialEq)]
+#[derive(Debug, Deserialize, Eq, JsonSchema, PartialEq)]
 #[serde(deny_unknown_fields)]
 pub struct AcmeToolchainConfig {
     pub bootstrap: bool,
     pub target_version: String,
 }
 
-#[derive(Debug, Deserialize, Eq, PartialEq)]
+#[derive(Debug, Deserialize, Eq, JsonSchema, PartialEq)]
 #[serde(deny_unknown_fields)]
 pub struct GhAwToolchainConfig {
     pub version: String,
 }
 
-#[derive(Debug, Deserialize, Eq, PartialEq)]
+#[derive(Debug, Deserialize, Eq, JsonSchema, PartialEq)]
 #[serde(deny_unknown_fields)]
 pub struct BudgetConfig {
     pub enforce_monthly: bool,
@@ -152,7 +176,7 @@ pub struct BudgetConfig {
     pub reason: String,
 }
 
-#[derive(Debug, Deserialize, Eq, PartialEq)]
+#[derive(Debug, Deserialize, Eq, JsonSchema, PartialEq)]
 #[serde(deny_unknown_fields)]
 pub struct EnginesConfig {
     pub intake: EngineConfig,
@@ -160,14 +184,14 @@ pub struct EnginesConfig {
     pub review: ReviewEngineConfig,
 }
 
-#[derive(Debug, Deserialize, Eq, PartialEq)]
+#[derive(Debug, Deserialize, Eq, JsonSchema, PartialEq)]
 #[serde(deny_unknown_fields)]
 pub struct EngineConfig {
     pub engine: String,
     pub token_secret: String,
 }
 
-#[derive(Debug, Deserialize, Eq, PartialEq)]
+#[derive(Debug, Deserialize, Eq, JsonSchema, PartialEq)]
 #[serde(deny_unknown_fields)]
 pub struct BuildCloudEngineConfig {
     pub engine: String,
@@ -175,7 +199,7 @@ pub struct BuildCloudEngineConfig {
     pub token_secret: String,
 }
 
-#[derive(Debug, Deserialize, Eq, PartialEq)]
+#[derive(Debug, Deserialize, Eq, JsonSchema, PartialEq)]
 #[serde(deny_unknown_fields)]
 pub struct ReviewEngineConfig {
     pub engine: String,
@@ -183,7 +207,7 @@ pub struct ReviewEngineConfig {
     pub model_policy: String,
 }
 
-#[derive(Debug, Deserialize, Eq, PartialEq)]
+#[derive(Debug, Deserialize, Eq, JsonSchema, PartialEq)]
 #[serde(deny_unknown_fields)]
 pub struct ModulesConfig {
     pub intake: IntakeModuleConfig,
@@ -198,7 +222,7 @@ pub struct ModulesConfig {
     pub ops: DisabledModuleConfig,
 }
 
-#[derive(Debug, Deserialize, Eq, PartialEq)]
+#[derive(Debug, Deserialize, Eq, JsonSchema, PartialEq)]
 #[serde(deny_unknown_fields)]
 pub struct IntakeModuleConfig {
     pub enabled: bool,
@@ -210,7 +234,7 @@ pub struct IntakeModuleConfig {
     pub provides: Vec<String>,
 }
 
-#[derive(Debug, Deserialize, Eq, PartialEq)]
+#[derive(Debug, Deserialize, Eq, JsonSchema, PartialEq)]
 #[serde(deny_unknown_fields)]
 pub struct SpecModuleConfig {
     pub enabled: bool,
@@ -220,7 +244,7 @@ pub struct SpecModuleConfig {
     pub provides: Vec<String>,
 }
 
-#[derive(Debug, Deserialize, Eq, PartialEq)]
+#[derive(Debug, Deserialize, Eq, JsonSchema, PartialEq)]
 #[serde(deny_unknown_fields)]
 #[allow(clippy::struct_excessive_bools)]
 pub struct BuildCloudModuleConfig {
@@ -239,17 +263,18 @@ pub struct BuildCloudModuleConfig {
     pub provides: Vec<String>,
 }
 
-#[derive(Debug, Deserialize, Eq, PartialEq)]
+#[derive(Debug, Deserialize, Eq, JsonSchema, PartialEq)]
 #[serde(deny_unknown_fields)]
 pub struct CiModuleConfig {
     pub enabled: bool,
     pub gate: String,
     pub required_checks: Vec<String>,
     pub commands: Vec<String>,
+    pub step_names: Vec<String>,
     pub provides: Vec<String>,
 }
 
-#[derive(Debug, Deserialize, Eq, PartialEq)]
+#[derive(Debug, Deserialize, Eq, JsonSchema, PartialEq)]
 #[serde(deny_unknown_fields)]
 pub struct MergeModuleConfig {
     pub enabled: bool,
@@ -262,13 +287,13 @@ pub struct MergeModuleConfig {
     pub provides: Vec<String>,
 }
 
-#[derive(Debug, Deserialize, Eq, PartialEq)]
+#[derive(Debug, Deserialize, Eq, JsonSchema, PartialEq)]
 #[serde(deny_unknown_fields)]
 pub struct DisabledModuleConfig {
     pub enabled: bool,
 }
 
-#[derive(Debug, Deserialize, Eq, PartialEq)]
+#[derive(Debug, Deserialize, Eq, JsonSchema, PartialEq)]
 #[serde(deny_unknown_fields)]
 pub struct RiskConfig {
     #[serde(rename = "default")]
@@ -279,7 +304,7 @@ pub struct RiskConfig {
     pub path_gate_enforced: bool,
 }
 
-#[derive(Debug, Deserialize, Eq, PartialEq)]
+#[derive(Debug, Deserialize, Eq, JsonSchema, PartialEq)]
 #[serde(deny_unknown_fields)]
 pub struct BootstrapConfig {
     pub milestone: String,

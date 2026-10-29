@@ -21,7 +21,7 @@ body:
     id: non-goals
     attributes:
       label: Non-goals
-      description: State the scope boundary and deferred work.
+      description: State the scope boundary and deferred work. AGENTS.md rules always apply; do not repeat them.
     validations:
       required: true
   - type: textarea

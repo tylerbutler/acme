@@ -9,12 +9,28 @@ fn loads_factory_fixture_and_disabled_module_stubs() {
 
     assert_eq!(config.schema_version, 0);
     assert_eq!(config.repository, "tylerbutler/acme");
+    assert!(!config.coordinator.automatic_dispatch);
+    assert_eq!(config.coordinator.max_active_tasks, 0);
     assert_eq!(config.engines.intake.token_secret, "GH_PAT");
     assert!(!config.modules.review.enabled);
     assert!(!config.modules.holdout.enabled);
     assert!(!config.modules.build_local.enabled);
     assert!(!config.modules.release.enabled);
     assert!(!config.modules.ops.enabled);
+}
+
+#[test]
+fn loads_explicit_coordinator_limits_without_changing_the_fixture_default() {
+    let configured = FACTORY.replace(
+        "[bootstrap]",
+        "[coordinator]\nautomatic_dispatch = true\nmax_active_tasks = 2\nmax_assignments_per_reconciliation = 1\nmax_attempts = 3\n\n[bootstrap]",
+    );
+    let config = FactoryConfig::from_toml(&configured).expect("coordinator config should load");
+
+    assert!(config.coordinator.automatic_dispatch);
+    assert_eq!(config.coordinator.max_active_tasks, 2);
+    assert_eq!(config.coordinator.max_assignments_per_reconciliation, 1);
+    assert_eq!(config.coordinator.max_attempts, 3);
 }
 
 #[test]

@@ -1,1 +1,22 @@
 .github/workflows/*.lock.yml linguist-generated=true
+
+modules/**/assets/** text eol=lf
+.github/workflows/ci.yml text eol=lf
+.github/actions/setup-rust/action.yml text eol=lf
+.github/rulesets/main.json text eol=lf
+.github/labels.yml text eol=lf
+.github/ISSUE_TEMPLATE/*.yml text eol=lf
+
+.agents/skills/** linguist-vendored=true
+.claude/** linguist-vendored=true
+skills/** linguist-vendored=true
+.github/agents/** linguist-vendored=true
+.github/hooks/** linguist-vendored=true
+.github/instructions/** linguist-vendored=true
+.github/prompts/** linguist-vendored=true
+.github/skills/** linguist-vendored=true
+.github/copilot-instructions.md linguist-vendored=true
+.apm/** linguist-vendored=true
+apm.yml linguist-vendored=true
+apm.lock.yaml linguist-vendored=true
+apm_modules/** linguist-vendored=true

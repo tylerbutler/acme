@@ -1,0 +1,26 @@
+name: Idea
+description: Propose a change before writing a spec.
+title: "[idea] "
+labels: [idea, needs-spec]
+body:
+  - type: textarea
+    id: goal
+    attributes:
+      label: Goal
+      description: Who needs this change, and what outcome do they need?
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance scenarios
+      description: Give three to five concrete checks with inputs, outputs and failure cases. Split larger work.
+    validations:
+      required: true
+  - type: textarea
+    id: non-goals
+    attributes:
+      label: Non-goals
+      description: State exclusions specific to this change. AGENTS.md rules always apply; do not repeat them.
+    validations:
+      required: true

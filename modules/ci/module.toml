@@ -1,0 +1,4 @@
+name = "ci"
+needs = []
+provides = ["ci"]
+gate = "required-status-check"
