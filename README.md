@@ -8,8 +8,9 @@ It does not call an LLM. An agent skill will conduct the init interview.
 read-only checks against the local module assets and the GitHub repository named
 in the config. It requires an authenticated `gh` CLI. `render` writes the
 deterministic M2 inventory to a new or empty directory. `sync` updates only
-validated M2 inventory paths in the current repository. `init` is not
-implemented and fails explicitly. Automatic dispatch is paused.
+validated M2 inventory paths in the current repository. `init` prepares a local
+change set from approved config for a supported Rust CLI project.
+Automatic dispatch is paused.
 
 ## Development
 
@@ -46,6 +47,64 @@ Fix does not provision secrets or change workflow enablement, variable gates,
 staging, budgets, assignments or issue state. It never runs the bootstrap script.
 See the [owner-only M2 acceptance procedure](docs/bootstrap.md#owner-only-m2-acceptance).
 Implementation and fake-state tests do not establish the live M2 exit check.
+
+### Local init
+
+Review the complete config before you run init. An explicit invocation supplies
+the approved config; the CLI does not infer approval from the brief.
+
+```sh
+acme init --config /path/to/approved-factory.toml
+```
+
+Without `--config`, init reads `factory/factory.toml`. With a separate approved
+file, it copies the exact config bytes to `factory/factory.toml`. An existing
+config must match; init never replaces a different config.
+
+Init requires the CLI/Rust preset, L3 autonomy, a non-bootstrap acme pin that
+matches the running binary, and supported local project inputs. Agent stages,
+workflow/assignment flags and automatic dispatch must remain off. Init uses M1
+validation and the M3 render plan and ownership checks. It rejects missing
+prerequisites, unsupported dependencies, conflicting outputs, symlinks and
+non-regular targets before writes. It preserves the brief, authored instructions,
+specs and project source. An enabled Spec stage must use `implementation = "human"`.
+
+The initial preset supports a single-package Cargo project with local Rust
+source targets, not a workspace. Custom `.cargo` config overrides are unsupported.
+CI commands are limited to `cargo fmt [--all] -- --check` and
+`cargo check`, `build`, `test` or `clippy`. The latter commands accept
+`--locked`, `--all-targets`, `--all-features` and `--no-default-features`;
+Clippy also accepts a final `-- -D warnings`. A locked command requires a
+nonempty, parseable `Cargo.lock`. Init checks these inputs without running
+commands or resolving dependencies. Init does not support custom scripts or
+shell commands.
+
+The result contains supported generated files and
+`factory/managed-files.json`. An existing ownership record blocks init; review
+the project and use `acme sync --check` followed by an approved `acme sync`
+instead. Resolve conflicts by hand. Like sync, init writes staged files and
+writes the record last. An I/O error can leave partial changes. Do not run it
+with concurrent checkout writers.
+
+After init, review the complete diff, run the configured local checks, and
+explicitly create a branch, commit and draft PR. For example:
+
+```sh
+git switch -c factory-init
+git status --short
+git diff
+git add -- factory/factory.toml factory/managed-files.json
+# Also stage the generated paths listed by init.
+git diff --cached
+git commit -m "feat: initialize factory"
+gh pr create --draft
+```
+
+Review untracked files too. Do not stage unrelated authored files.
+
+Init does not execute configured CI commands, call an LLM, read secret values,
+contact GitHub, provision settings, activate agent workflows, create a branch or
+PR, or start paid work. Repository administration needs separate owner approval.
 
 ### Local sync
 

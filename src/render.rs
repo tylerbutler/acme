@@ -2,10 +2,11 @@ use crate::{BuiltinModule, ConfigBinding, FactoryConfig, ModuleManifest, builtin
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
 
+mod init;
 mod output;
 mod sync;
 pub use output::{RenderError, render_to_directory};
-pub use sync::{SyncError, SyncReport, sync_repository};
+pub use sync::{SyncError, SyncReport, init_repository, sync_repository};
 
 #[derive(Debug, Eq, PartialEq)]
 pub struct RenderPlan {

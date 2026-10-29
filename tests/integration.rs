@@ -1,7 +1,7 @@
 use std::process::Command;
 
 #[test]
-fn bootstrap_binary_does_not_report_success() {
+fn init_requires_an_init_compatible_approved_config() {
     let output = Command::new(env!("CARGO_BIN_EXE_acme"))
         .arg("init")
         .output()
@@ -9,7 +9,7 @@ fn bootstrap_binary_does_not_report_success() {
 
     assert!(!output.status.success());
     assert!(output.stdout.is_empty());
-    assert!(String::from_utf8_lossy(&output.stderr).contains("not implemented"));
+    assert!(String::from_utf8_lossy(&output.stderr).contains("agent"));
 }
 
 #[test]
