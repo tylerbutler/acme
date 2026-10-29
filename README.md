@@ -50,6 +50,11 @@ Implementation and fake-state tests do not establish the live M2 exit check.
 
 ### Local init
 
+Init is included in the `0.2.0` release candidate, not the adopted `v0.1.0`
+release. The owner must publish and explicitly install the matching release
+before the template can use it. See the
+[M4 release handoff](docs/bootstrap.md#m4-release-preparation-and-template-handoff).
+
 Review the complete config before you run init. An explicit invocation supplies
 the approved config; the CLI does not infer approval from the brief.
 
