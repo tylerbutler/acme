@@ -1,0 +1,4 @@
+name = "intake"
+needs = ["labels", "issue-forms"]
+provides = ["triaged-issue"]
+gate = "issue-form"

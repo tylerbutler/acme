@@ -1,0 +1,4 @@
+name = "build_cloud"
+needs = ["approved-spec", "ci"]
+provides = ["draft-pr"]
+gate = "owner-ready-for-agent"

@@ -101,3 +101,80 @@ fn ci_step_names_are_required_strings_in_rust_and_schema() {
     assert_schema_and_rust_agree(&schema, &wrong_type);
     assert!(FactoryConfig::from_toml(&wrong_type).is_err());
 }
+
+#[test]
+fn optional_agent_models_are_safe_identifiers_in_rust_and_schema() {
+    let schema = serde_json::to_value(factory_schema()).unwrap();
+    for engine in ["intake", "build_cloud"] {
+        for field in ["controller_model", "detection_model"] {
+            for (model, valid) in [
+                ("auto", true),
+                ("gpt-6.1-sol", true),
+                ("Claude_Sonnet-4.5", true),
+                ("", false),
+                (" ", false),
+                (" model", false),
+                ("model ", false),
+                ("model\npermissions: write-all", false),
+                ("model\n", false),
+                ("${{ secrets.GH_PAT }}", false),
+                ("model: value", false),
+                ("../model", false),
+                ("*alias", false),
+                ("é", false),
+                ("model\u{7f}", false),
+            ] {
+                let mut raw: toml::Value = toml::from_str(FACTORY).unwrap();
+                raw["engines"][engine]
+                    .as_table_mut()
+                    .unwrap()
+                    .insert(field.to_owned(), toml::Value::String(model.to_owned()));
+                let input = toml::to_string(&raw).unwrap();
+                assert_schema_and_rust_agree(&schema, &input);
+                assert_eq!(
+                    FactoryConfig::from_toml(&input).is_ok(),
+                    valid,
+                    "{engine}.{field}: {model:?}"
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn optional_models_preserve_omission_types_and_length_limits() {
+    let schema = serde_json::to_value(factory_schema()).unwrap();
+    let config = FactoryConfig::from_toml(FACTORY).unwrap();
+    assert!(config.engines.intake.controller_model.is_none());
+    assert!(config.engines.intake.detection_model.is_none());
+    assert!(config.engines.build_cloud.controller_model.is_none());
+    assert!(config.engines.build_cloud.detection_model.is_none());
+    assert_eq!(config.engines.build_cloud.model, "gpt-6.1-sol");
+    for engine in ["intake", "build_cloud"] {
+        for field in ["controller_model", "detection_model"] {
+            for value in [
+                toml::Value::Integer(1),
+                toml::Value::Boolean(true),
+                toml::Value::Array(Vec::new()),
+                toml::Value::String("a".repeat(129)),
+            ] {
+                let mut raw: toml::Value = toml::from_str(FACTORY).unwrap();
+                raw["engines"][engine]
+                    .as_table_mut()
+                    .unwrap()
+                    .insert(field.to_owned(), value);
+                let input = toml::to_string(&raw).unwrap();
+                assert_schema_and_rust_agree(&schema, &input);
+                assert!(FactoryConfig::from_toml(&input).is_err());
+            }
+            let mut raw: toml::Value = toml::from_str(FACTORY).unwrap();
+            raw["engines"][engine]
+                .as_table_mut()
+                .unwrap()
+                .insert(field.to_owned(), toml::Value::String("a".repeat(128)));
+            let input = toml::to_string(&raw).unwrap();
+            assert_schema_and_rust_agree(&schema, &input);
+            assert!(FactoryConfig::from_toml(&input).is_ok());
+        }
+    }
+}

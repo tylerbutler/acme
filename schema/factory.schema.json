@@ -142,6 +142,26 @@
         "token_secret"
       ],
       "properties": {
+        "controller_model": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/ModelId"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "detection_model": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/ModelId"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "engine": {
           "type": "string"
         },
@@ -317,6 +337,26 @@
         "token_secret"
       ],
       "properties": {
+        "controller_model": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/ModelId"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "detection_model": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/ModelId"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "engine": {
           "type": "string"
         },
@@ -450,6 +490,12 @@
         }
       },
       "additionalProperties": false
+    },
+    "ModelId": {
+      "type": "string",
+      "maxLength": 128,
+      "minLength": 1,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$"
     },
     "ModulesConfig": {
       "type": "object",

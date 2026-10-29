@@ -168,6 +168,28 @@ records. The golden tests compare every output byte with the reviewed M2 files.
 The bundled M2 assets remain fixed doctor fixtures; the two `.tmpl` assets
 supply the config-dependent render text.
 
+### Agent source planning
+
+The library API `acme::render::build_agent_source_plan(&config, repository_root)`
+plans bundled Intake and Build-cloud Markdown and the approval helper. It checks
+the acme and gh-aw pins, dependencies and authored prerequisites without writing
+files or running tools. `AGENTS.md` must be a nonempty UTF-8 regular file.
+Build-cloud also needs a valid authored `commit-types.json`; its helper requires
+`python3` and `gh` on the workflow runner.
+
+The plan declares exact source, helper and future lock ownership, but contains no
+compiler-output bytes. It does not extend CLI render/sync, doctor or activation.
+Compiler-backed verification belongs to the later compilation child issue.
+
+Both `engines.intake` and `engines.build_cloud` accept optional `controller_model`
+and `detection_model` fields. The existing `engines.build_cloud.model` selects only
+the assigned builder. Overrides are literal identifiers: 1–128 ASCII letters,
+digits, dots, underscores or hyphens, starting with a letter or digit. Expressions
+are rejected; there is no model allowlist or availability check. Omission preserves
+the reviewed source bytes. A controller-only override adds the trusted detection
+selection expression so the controller cannot become the detection default.
+Tests establish source behavior, not serving-model identity or compiled behavior.
+
 ### Agent comment style
 
 The APM source rule is
