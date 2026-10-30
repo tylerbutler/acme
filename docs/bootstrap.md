@@ -470,6 +470,49 @@ release and adoption evidence is complete and the adoption change is
 human-merged. Staged/live event acceptance is separate work with separate
 owner approval.
 
+### M5 adoption attempt: blocked
+
+On 2026-10-30, the owner published annotated tag `v0.3.0` with tag object
+`9a9fcc0b8d189c4de8c8d7d6e745e99d52c0ce18`, targeting human-merged revision
+`a771d3336c40d02cfe88c914338c4895afc72b0f`. The release build used
+`rustc 1.85.1 (4eb161250 2025-03-15)`. Both
+`TMPDIR=/private/tmp just check` and
+`cargo build --locked --release --bin acme` passed. The ordinary check skipped
+the installed-compiler proof and three Python checks.
+
+The preserved binary was installed at an explicit session-local path. Its
+SHA-256 before and after installation was
+`14be19b8fa67117e8b7c72f1d4c537c6bd57cfd9ac59ca7fe8325f61c1eb6b6f`.
+The adoption branch proposes only the config pin change from `0.1.0` to
+`0.3.0`; this is not a completed adoption.
+
+Explicit compilation with that binary, gh-aw `v0.93.5` and native actionlint
+`1.7.12` failed at actionlint with exit status 1. No completed
+`compiled-workflows.json` was published. The CLI reported only
+`actionlint failed (exit status: 1):`, without the validator diagnostics.
+Running the same actionlint options against the reviewed checkout locks
+reported six errors:
+
+- Intake: unsupported `concurrency.queue` at lines 64 and 1230, and
+  unsupported `job.workflow_ref` at line 132.
+- Build-cloud: unsupported `concurrency.queue` at lines 64 and 1285, and
+  unsupported `job.workflow_ref` at line 134.
+
+No validation was suppressed, no lock bytes were edited, and sync was not run.
+The ownership record and all live workflow files remain unchanged. The full
+13-file rendered comparison and sync idempotence checks remain unverified.
+
+Fresh read-only doctor failed `local.agent.compiled-inputs` because no reviewed
+compiled inputs were available. The remote workflow-state, activation-variable
+and configured secret-name checks passed. Path-author enforcement, model
+separation and token-scope verification remain deferred. Doctor did not repair
+settings or start inference.
+
+Do not merge the proposed pin as successful adoption. Resolve the compiler and
+validator compatibility problem through a reviewed change, publish a new
+version if released code must change, and repeat the procedure above. Keep
+#96 open until the comparison, sync, doctor and human-merge evidence is complete.
+
 ## M4 release preparation and template handoff
 
 The `0.2.0` candidate adds deterministic local `acme init` for an approved
