@@ -32,6 +32,15 @@ renderer. The renderer must reproduce the hand-built factory with zero diff.
 Schema and doctor exist. The next work is M3: render, sync and version pins.
 The renderer is the product; finish it before other milestones.
 
+After M5, expand the factory through
+[built-in presets](../docs/specs/0013-builtin-factory-presets.md) before the
+deferred M6–M8 work. The targets are Rust CLI, Rust library, TypeScript library,
+Gleam library and Astro website. Start expansion with Rust library and
+TypeScript library to test reuse across project purpose and language. Share
+the deterministic engine and safety rules; keep project checks and CI setup
+preset-specific. Defer public plugins. This is planning direction, not a
+change to current Rust-only support or approval to build the presets.
+
 Automatic dispatch (specs 0010 and 0011) is paused. It saves one owner label
 per task but adds a large trust and maintenance surface. The owner-applied
 `ready-for-agent` label and direct owner assignment stay the build approvals. Revisit automatic
