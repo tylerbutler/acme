@@ -1,4 +1,4 @@
-//! Agent sources are separate from the M2 render/sync inventory.
+//! Agent source assets and exact full-render ownership.
 
 use crate::{ManifestError, ModuleAsset, ModuleManifest};
 

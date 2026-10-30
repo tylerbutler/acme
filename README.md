@@ -1,15 +1,16 @@
 # acme
 
 A deterministic software-factory CLI, written in Rust. The binary reads
-`factory/factory.toml` and renders the supported M2 workflows and guardrails.
+`factory/factory.toml` and renders the supported workflows and guardrails.
 It does not call an LLM. An agent skill will conduct the init interview.
 
 **Status: M0 factory loop verified.** The factory is hand-built. `doctor` runs
 read-only checks against the local module assets and the GitHub repository named
 in the config. It requires an authenticated `gh` CLI. `render` writes the
-deterministic M2 inventory to a new or empty directory. `sync` updates only
-validated M2 inventory paths in the current repository. `init` prepares a local
-change set from approved config for a supported Rust CLI project.
+deterministic inventory to a new or empty directory. Enabled agent modules need
+an explicit, validated compiled review directory. `sync` updates only
+validated module inventory paths in the current repository. `init` prepares a
+local change set from approved config for a supported Rust CLI project.
 Automatic dispatch is paused.
 
 ## Development
@@ -19,8 +20,8 @@ just build
 just check
 cargo run -- doctor
 cargo run -- doctor --config path/to/factory.toml
-cargo run --bin acme -- render --output /tmp/acme-render
-cargo run --bin acme -- sync --check
+cargo run --bin acme -- render --compiled-inputs /tmp/acme-agent-review --output /tmp/acme-render
+cargo run --bin acme -- sync --check --compiled-inputs /tmp/acme-agent-review
 ```
 
 Rust is pinned in `rust-toolchain.toml`. Python 3 is used for the bootstrap
@@ -113,10 +114,11 @@ PR, or start paid work. Repository administration needs separate owner approval.
 
 ### Local sync
 
-`acme sync [--check] [--config PATH]` uses the same config and render plan as
-`render`. Check mode lists path-sorted creates, updates and removals, followed
-by any ownership-record change. It exits unsuccessfully on output or metadata
-drift and does not write files or create directories.
+`acme sync [--check] [--config PATH] [--compiled-inputs DIR]` uses the same config
+and validated output bytes as `render`. Check mode lists path-sorted creates,
+updates and removals, followed by any ownership-record change. It exits
+unsuccessfully on output or metadata drift and does not write files or create
+directories.
 
 Sync keeps deterministic bookkeeping at `factory/managed-files.json`, with
 format version 1, the generating acme version, and path-sorted module, path
@@ -149,9 +151,13 @@ requires the separate owner-approved release and pin procedure in the
 
 ### Local rendering
 
+The first two examples need a config with agent modules disabled. Enabled agent
+modules require the compiled input shown in the third example.
+
 ```sh
 acme render --output /tmp/acme-render
 acme render --config path/to/factory.toml --output /tmp/acme-preview
+acme render --compiled-inputs /tmp/acme-agent-review --output /tmp/acme-full-preview
 ```
 
 Render reads `factory/factory.toml` by default and validates the complete plan
@@ -160,11 +166,13 @@ symlinked destinations, symlinked ancestors and parent (`..`) components.
 An I/O failure can leave partial output;
 inspect it and use a fresh destination to retry.
 
-The binary embeds its templates and does not need the source checkout or `gh`.
-It writes only the CI workflow, Rust setup action, labels, issue forms and
-ruleset fixture, with LF line endings. It does not execute configured commands,
-call GitHub, compile gh-aw, render Intake or Build-cloud, or write ownership
-records. The golden tests compare every output byte with the reviewed M2 files.
+The binary embeds its templates and does not need `gh` to render or sync.
+The M2 inventory contains the CI workflow, Rust setup action, labels, issue forms
+and ruleset fixture, with LF line endings. Enabled agent modules also add their
+validated workflow sources, compiled locks and required approval helper.
+Agent planning checks authored prerequisites in the current repository.
+Render does not execute configured commands, call GitHub, compile gh-aw or write
+ownership records. Golden tests compare output bytes with reviewed fixtures.
 The bundled M2 assets remain fixed doctor fixtures; the two `.tmpl` assets
 supply the config-dependent render text.
 
@@ -178,8 +186,9 @@ Build-cloud also needs a valid authored `commit-types.json`; its helper requires
 `python3` and `gh` on the workflow runner.
 
 The plan declares exact source, helper and future lock ownership, but contains no
-compiler-output bytes. It does not extend CLI render/sync, doctor or activation.
-The separate compilation command supplies compiler-output bytes for review.
+compiler-output bytes. The separate compilation command supplies compiler-output
+bytes for review. Full render and sync consume these bytes after validation;
+source planning alone does not compile, synchronize or activate workflows.
 
 Both `engines.intake` and `engines.build_cloud` accept optional `controller_model`
 and `detection_model` fields. The existing `engines.build_cloud.model` selects only
@@ -244,9 +253,42 @@ or write files. It rejects missing, stale, edited, extra or incompatible inputs,
 symlinks and non-regular files. Plain hashes detect mismatches; they do not
 authenticate a compiler or an untrusted review directory.
 
-Normal render and sync retain their M2-only behavior in this implementation.
-They do not consume review directories or compile agent workflows. Compilation
-does not authorize publication, activation, assignment or paid tests.
+### Compiled inputs for render and sync
+
+When Intake or Build-cloud is enabled, render, sync and sync check mode require
+`--compiled-inputs DIR`. Supply the review directory made for the same approved
+config and bundled assets:
+
+```sh
+acme compile --output /tmp/acme-agent-review
+acme render --compiled-inputs /tmp/acme-agent-review --output /tmp/acme-render
+acme sync --check --compiled-inputs /tmp/acme-agent-review
+# After review, in the intended checkout:
+acme sync --compiled-inputs /tmp/acme-agent-review
+acme sync --check --compiled-inputs /tmp/acme-agent-review
+```
+
+These consumers validate the complete review directory before output writes,
+then use its captured bytes. They never invoke the compiler or actionlint.
+The compilation record is review metadata, not a managed checkout output.
+Missing, stale, edited, extra or incompatible inputs fail before writes.
+The full source/lock/helper inventory uses the same adoption, conflict and
+ownership checks as M2 outputs.
+
+Library callers can use `render_to_directory_with_compiled_inputs` and
+`sync_repository_with_compiled_inputs` in `acme::render`. Both take an explicit
+repository root and an optional review-directory path. The original APIs reject
+enabled agent modules when no compiled input is supplied.
+
+After a config change, compile only the remaining enabled workflows into a fresh
+review directory. Sync removes a disabled module's recorded, unmodified outputs
+without compiling that disabled workflow. If no agent modules remain enabled,
+render and sync need no compiled input or compiler and use the M2 path.
+Removal preserves authored instructions, commit configuration, briefs, specs
+and unrelated helpers.
+
+No live adoption is performed by this implementation. Compilation, render and
+sync do not authorize publication, activation, assignment or paid tests.
 
 Run `just prove-compilation` with the required local tools to check pinned-compiler
 repeatability and model-role separation, including detection fallback. This proof

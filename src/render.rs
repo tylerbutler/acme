@@ -1,6 +1,7 @@
 use crate::{BuiltinModule, ConfigBinding, FactoryConfig, ModuleManifest, builtin_modules};
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
+use std::path::Path;
 
 mod agent_sources;
 mod compiled;
@@ -12,8 +13,77 @@ pub use compiled::{
     CompileError, CompiledAgentOutput, ValidatedCompiledInputs, compile_agent_workflows,
     validate_compiled_inputs,
 };
-pub use output::{RenderError, render_to_directory};
-pub use sync::{SyncError, SyncReport, init_repository, sync_repository};
+pub use output::{RenderError, render_to_directory, render_to_directory_with_compiled_inputs};
+pub use sync::{
+    SyncError, SyncReport, init_repository, sync_repository, sync_repository_with_compiled_inputs,
+};
+
+struct BytePlan {
+    acme_version: &'static str,
+    outputs: Vec<ByteOutput>,
+}
+
+struct ByteOutput {
+    module: String,
+    path: &'static str,
+    contents: Vec<u8>,
+}
+
+fn m2_byte_plan(config: &FactoryConfig) -> Result<BytePlan, RenderPlanError> {
+    let plan = build_render_plan(config)?;
+    let outputs = plan
+        .outputs
+        .into_iter()
+        .map(|output| {
+            let contents = output::render_output(&output)
+                .map_err(|error| RenderPlanError(error.to_string()))?;
+            Ok(ByteOutput {
+                module: output.module,
+                path: output.path,
+                contents,
+            })
+        })
+        .collect::<Result<_, RenderPlanError>>()?;
+    Ok(BytePlan {
+        acme_version: plan.acme_version,
+        outputs,
+    })
+}
+
+fn final_byte_plan(
+    config: &FactoryConfig,
+    repository: &Path,
+    compiled_inputs: Option<&Path>,
+) -> Result<BytePlan, RenderPlanError> {
+    let mut plan = m2_byte_plan(config)?;
+    if (config.modules.intake.enabled || config.modules.build_cloud.enabled)
+        && compiled_inputs.is_none()
+    {
+        return Err(RenderPlanError(
+            "enabled agent modules require --compiled-inputs DIR; explicitly compile and review approved inputs first"
+                .to_owned(),
+        ));
+    }
+    if let Some(directory) = compiled_inputs {
+        let validated = validate_compiled_inputs(config, repository, directory)
+            .map_err(|error| RenderPlanError(error.to_string()))?;
+        plan.outputs
+            .extend(validated.outputs.into_iter().map(|output| ByteOutput {
+                module: output.ownership.module.name().to_owned(),
+                path: output.ownership.path,
+                contents: output.contents,
+            }));
+    }
+    plan.outputs.sort_by_key(|output| output.path);
+    if plan
+        .outputs
+        .windows(2)
+        .any(|pair| pair[0].path == pair[1].path)
+    {
+        return Err(RenderPlanError("duplicate final output path".to_owned()));
+    }
+    Ok(plan)
+}
 
 #[derive(Debug, Eq, PartialEq)]
 pub struct RenderPlan {
@@ -62,6 +132,7 @@ impl fmt::Display for RenderPlanError {
 
 impl std::error::Error for RenderPlanError {}
 
+/// Plan M2 templates and stage dependencies, not full compiled workflow output.
 pub fn build_render_plan(config: &FactoryConfig) -> Result<RenderPlan, RenderPlanError> {
     build_render_plan_with_catalog(config, builtin_modules())
 }

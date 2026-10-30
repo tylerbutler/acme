@@ -2,12 +2,302 @@ use acme::FactoryConfig;
 use acme::render::{compile_agent_workflows, validate_compiled_inputs};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
+use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicU64, Ordering};
 
 const RECORD: &str = "compiled-workflows.json";
+const OWNERSHIP: &str = "factory/managed-files.json";
+
+#[test]
+fn full_public_apis_require_compiled_inputs_for_enabled_agents() {
+    let workspace = Workspace::new();
+    let before = snapshot(&workspace.0);
+    let destination = workspace.0.join("rendered");
+    let error = acme::render::render_to_directory(&workspace.config(), &destination).unwrap_err();
+    assert!(error.to_string().contains("--compiled-inputs"));
+    for check in [false, true] {
+        let error =
+            acme::render::sync_repository(&workspace.config(), &workspace.0, check).unwrap_err();
+        assert!(error.to_string().contains("--compiled-inputs"));
+    }
+    let check = handoff_cli(&workspace, &["sync", "--config", "factory.toml", "--check"]);
+    assert!(!check.status.success());
+    assert!(String::from_utf8_lossy(&check.stderr).contains("--compiled-inputs"));
+    assert!(!destination.exists());
+    assert!(!workspace.0.join(OWNERSHIP).exists());
+    assert_eq!(snapshot(&workspace.0), before);
+}
+
+#[cfg(unix)]
+fn reviewed_inputs(workspace: &Workspace) -> PathBuf {
+    assert!(compile_fixture(workspace, "review", "").status.success());
+    let review = workspace.0.join("review");
+    let record_path = review.join(RECORD);
+    let mut record: Value = serde_json::from_slice(&fs::read(&record_path).unwrap()).unwrap();
+    for (path, bytes) in [
+        (
+            ".github/workflows/intake.lock.yml",
+            include_bytes!("../.github/workflows/intake.lock.yml").as_slice(),
+        ),
+        (
+            ".github/workflows/build-cloud.lock.yml",
+            include_bytes!("../.github/workflows/build-cloud.lock.yml").as_slice(),
+        ),
+    ] {
+        if !review.join(path).exists() {
+            continue;
+        }
+        fs::write(review.join(path), bytes).unwrap();
+        let entry = record["outputs"]
+            .as_array_mut()
+            .unwrap()
+            .iter_mut()
+            .find(|entry| entry["path"] == path)
+            .unwrap();
+        entry["sha256"] = format!("{:x}", Sha256::digest(bytes)).into();
+    }
+    fs::write(record_path, serde_json::to_vec(&record).unwrap()).unwrap();
+    review
+}
+
+fn handoff_cli(workspace: &Workspace, arguments: &[&str]) -> std::process::Output {
+    Command::new(env!("CARGO_BIN_EXE_acme"))
+        .current_dir(&workspace.0)
+        .env("PATH", workspace.0.join("no-programs"))
+        .args(arguments)
+        .output()
+        .unwrap()
+}
+
+fn succeeds(output: &std::process::Output) {
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+#[derive(Debug, Eq, PartialEq)]
+enum Snapshot {
+    Directory,
+    File(Vec<u8>),
+    Symlink(PathBuf),
+    Other,
+}
+
+fn snapshot(root: &Path) -> BTreeMap<PathBuf, Snapshot> {
+    fn visit(root: &Path, directory: &Path, files: &mut BTreeMap<PathBuf, Snapshot>) {
+        for entry in fs::read_dir(directory).unwrap() {
+            let entry = entry.unwrap();
+            let path = entry.path();
+            let kind = entry.file_type().unwrap();
+            let state = if kind.is_symlink() {
+                Snapshot::Symlink(fs::read_link(&path).unwrap())
+            } else if kind.is_dir() {
+                visit(root, &path, files);
+                Snapshot::Directory
+            } else if kind.is_file() {
+                Snapshot::File(fs::read(&path).unwrap())
+            } else {
+                Snapshot::Other
+            };
+            files.insert(path.strip_prefix(root).unwrap().to_owned(), state);
+        }
+    }
+    let mut files = BTreeMap::new();
+    visit(root, root, &mut files);
+    files
+}
+
+#[cfg(unix)]
+fn copy_tree(source: &Path, destination: &Path) {
+    for entry in fs::read_dir(source).unwrap() {
+        let entry = entry.unwrap();
+        let target = destination.join(entry.file_name());
+        if entry.file_type().unwrap().is_dir() {
+            fs::create_dir_all(&target).unwrap();
+            copy_tree(&entry.path(), &target);
+        } else {
+            fs::copy(entry.path(), target).unwrap();
+        }
+    }
+}
+
+#[cfg(unix)]
+fn rejects_sync(config: &FactoryConfig, workspace: &Workspace, directory: &Path) {
+    let before = snapshot(&workspace.0);
+    for check in [false, true] {
+        assert!(
+            acme::render::sync_repository_with_compiled_inputs(
+                config,
+                &workspace.0,
+                check,
+                Some(directory),
+            )
+            .is_err()
+        );
+        assert_eq!(snapshot(&workspace.0), before);
+    }
+}
+
+#[cfg(unix)]
+fn rejects_handoff(config: &FactoryConfig, workspace: &Workspace, directory: &Path) {
+    let before = snapshot(&workspace.0);
+    assert!(
+        acme::render::render_to_directory_with_compiled_inputs(
+            config,
+            &workspace.0,
+            &workspace.0.join("rejected-render"),
+            Some(directory),
+        )
+        .is_err()
+    );
+    assert_eq!(snapshot(&workspace.0), before);
+    rejects_sync(config, workspace, directory);
+}
+
+#[cfg(unix)]
+#[test]
+fn full_reviewed_golden_render_adoption_and_check_never_invoke_compiler() {
+    let workspace = Workspace::new();
+    let review = reviewed_inputs(&workspace);
+    let validated = validate_compiled_inputs(&workspace.config(), &workspace.0, &review).unwrap();
+    for output in &validated.outputs {
+        let expected =
+            fs::read(Path::new(env!("CARGO_MANIFEST_DIR")).join(output.ownership.path)).unwrap();
+        assert_eq!(output.contents, expected, "{}", output.ownership.path);
+    }
+    succeeds(&handoff_cli(
+        &workspace,
+        &[
+            "render",
+            "--config",
+            "factory.toml",
+            "--output",
+            "rendered",
+            "--compiled-inputs",
+            "review",
+        ],
+    ));
+    for path in [
+        ".github/ISSUE_TEMPLATE/bug.yml",
+        ".github/ISSUE_TEMPLATE/config.yml",
+        ".github/ISSUE_TEMPLATE/idea.yml",
+        ".github/ISSUE_TEMPLATE/spec-request.yml",
+        ".github/actions/setup-rust/action.yml",
+        ".github/labels.yml",
+        ".github/rulesets/main.json",
+        ".github/workflows/ci.yml",
+    ] {
+        assert_eq!(
+            fs::read(workspace.0.join("rendered").join(path)).unwrap(),
+            fs::read(Path::new(env!("CARGO_MANIFEST_DIR")).join(path)).unwrap(),
+            "{path}"
+        );
+    }
+    for output in &validated.outputs {
+        assert_eq!(
+            fs::read(workspace.0.join("rendered").join(output.ownership.path)).unwrap(),
+            output.contents
+        );
+    }
+    assert_eq!(
+        snapshot(&workspace.0.join("rendered"))
+            .values()
+            .filter(|entry| matches!(entry, Snapshot::File(_)))
+            .count(),
+        13
+    );
+    // Adopt the entire rendered tree, not just the workflow files.
+    copy_tree(&workspace.0.join("rendered"), &workspace.0);
+    let arguments = [
+        "sync",
+        "--config",
+        "factory.toml",
+        "--compiled-inputs",
+        "review",
+    ];
+    let unchanged = snapshot(&workspace.0);
+    let before = handoff_cli(&workspace, &[arguments.as_slice(), &["--check"]].concat());
+    assert!(!before.status.success());
+    assert!(!workspace.0.join(OWNERSHIP).exists());
+    assert_eq!(snapshot(&workspace.0), unchanged);
+    let adoption = handoff_cli(&workspace, &arguments);
+    succeeds(&adoption);
+    assert_eq!(
+        String::from_utf8(adoption.stdout).unwrap(),
+        "update factory/managed-files.json\n"
+    );
+    let record = fs::read(workspace.0.join(OWNERSHIP)).unwrap();
+    let entries: Value = serde_json::from_slice(&record).unwrap();
+    assert_eq!(entries["entries"].as_array().unwrap().len(), 13);
+    for output in &validated.outputs {
+        assert!(
+            entries["entries"].as_array().unwrap().iter().any(|entry| {
+                entry["module"] == output.ownership.module.name()
+                    && entry["path"] == output.ownership.path
+                    && entry["sha256"] == format!("{:x}", Sha256::digest(&output.contents))
+            }),
+            "missing ownership entry for {}",
+            output.ownership.path
+        );
+    }
+    let adopted = snapshot(&workspace.0);
+    let second = handoff_cli(&workspace, &arguments);
+    succeeds(&second);
+    assert_eq!(second.stdout, b"Sync is clean.\n");
+    succeeds(&handoff_cli(
+        &workspace,
+        &[arguments.as_slice(), &["--check"]].concat(),
+    ));
+    assert_eq!(fs::read(workspace.0.join(OWNERSHIP)).unwrap(), record);
+    assert_eq!(snapshot(&workspace.0), adopted);
+}
+
+#[test]
+fn compiled_inputs_cli_parser_rejects_missing_empty_duplicate_and_unknown_arguments() {
+    let workspace = Workspace::new();
+    for command in ["render", "sync"] {
+        for (extra, message) in [
+            (
+                vec!["--compiled-inputs"],
+                "--compiled-inputs requires a path",
+            ),
+            (
+                vec!["--compiled-inputs", ""],
+                "--compiled-inputs requires a path",
+            ),
+            (
+                vec!["--compiled-inputs", "--check"],
+                "--compiled-inputs requires a path",
+            ),
+            (
+                vec!["--compiled-inputs", "review", "--compiled-inputs", "other"],
+                "--compiled-inputs must be specified once",
+            ),
+            (vec!["--compilation", "review"], "unknown"),
+            (vec!["--config", "other"], "--config must be specified once"),
+        ] {
+            let before = snapshot(&workspace.0);
+            let mut arguments = vec![command, "--config", "factory.toml"];
+            if command == "render" {
+                arguments.extend(["--output", "rendered"]);
+            }
+            arguments.extend(extra);
+            let result = handoff_cli(&workspace, &arguments);
+            assert!(!result.status.success());
+            assert!(
+                String::from_utf8_lossy(&result.stderr).contains(message),
+                "{}",
+                String::from_utf8_lossy(&result.stderr)
+            );
+            assert_eq!(snapshot(&workspace.0), before);
+        }
+    }
+}
 
 #[test]
 fn serializable_config_schema_remains_synchronized() {
@@ -15,6 +305,353 @@ fn serializable_config_schema_remains_synchronized() {
         serde_json::from_str(include_str!("../schema/factory.schema.json")).unwrap();
     let actual = serde_json::to_value(acme::config::factory_schema()).unwrap();
     assert_eq!(actual, expected);
+}
+
+#[cfg(unix)]
+#[test]
+fn all_agent_targets_reject_conflicts_and_modified_ownership_before_any_writes() {
+    let workspace = Workspace::new();
+    let review = reviewed_inputs(&workspace);
+    let config = workspace.config();
+    rejects_handoff(&config, &workspace, &workspace.0.join("missing-review"));
+    rejects_handoff(&config, &workspace, &workspace.0.join("factory.toml"));
+    let validated = validate_compiled_inputs(&config, &workspace.0, &review).unwrap();
+    for output in &validated.outputs {
+        let target = workspace.0.join(output.ownership.path);
+        fs::create_dir_all(target.parent().unwrap()).unwrap();
+        fs::write(&target, "authored conflict").unwrap();
+        rejects_sync(&config, &workspace, &review);
+        fs::remove_file(target).unwrap();
+    }
+    acme::render::sync_repository_with_compiled_inputs(&config, &workspace.0, false, Some(&review))
+        .unwrap();
+    for output in &validated.outputs {
+        let target = workspace.0.join(output.ownership.path);
+        fs::write(&target, "local edit").unwrap();
+        rejects_sync(&config, &workspace, &review);
+        let mut disabled = workspace.config();
+        for module in [
+            &mut disabled.modules.intake.enabled,
+            &mut disabled.modules.spec.enabled,
+            &mut disabled.modules.build_cloud.enabled,
+        ] {
+            *module = false;
+        }
+        let before = snapshot(&workspace.0);
+        for check in [false, true] {
+            let error = acme::render::sync_repository(&disabled, &workspace.0, check).unwrap_err();
+            assert!(error.to_string().contains("modified owned file"));
+            assert_eq!(snapshot(&workspace.0), before);
+        }
+        fs::write(target, &output.contents).unwrap();
+    }
+    // Missing owned agent files are recreated, not treated as local modifications.
+    for output in &validated.outputs {
+        fs::remove_file(workspace.0.join(output.ownership.path)).unwrap();
+    }
+    let before = snapshot(&workspace.0);
+    let report = acme::render::sync_repository_with_compiled_inputs(
+        &config,
+        &workspace.0,
+        true,
+        Some(&review),
+    )
+    .unwrap();
+    assert_eq!(report.creates.len(), 5);
+    assert_eq!(snapshot(&workspace.0), before);
+    acme::render::sync_repository_with_compiled_inputs(&config, &workspace.0, false, Some(&review))
+        .unwrap();
+    for output in validated.outputs {
+        assert_eq!(
+            fs::read(workspace.0.join(output.ownership.path)).unwrap(),
+            output.contents
+        );
+    }
+}
+
+#[cfg(unix)]
+#[test]
+fn handoff_checks_authored_prerequisites_without_overwriting_them() {
+    let workspace = Workspace::new();
+    let review = reviewed_inputs(&workspace);
+    for (path, invalid) in [("AGENTS.md", ""), ("commit-types.json", "not json")] {
+        let target = workspace.0.join(path);
+        let original = fs::read(&target).unwrap();
+        fs::remove_file(&target).unwrap();
+        rejects_handoff(&workspace.config(), &workspace, &review);
+        fs::write(&target, invalid).unwrap();
+        rejects_handoff(&workspace.config(), &workspace, &review);
+        fs::write(target, original).unwrap();
+    }
+}
+
+#[cfg(unix)]
+#[test]
+fn handoff_rejects_symlinked_and_nonregular_inputs_and_checkout_targets() {
+    use std::os::unix::fs::symlink;
+    use std::os::unix::net::UnixListener;
+    let workspace = Workspace::new();
+    let review = reviewed_inputs(&workspace);
+    let config = workspace.config();
+    symlink(&review, workspace.0.join("review-link")).unwrap();
+    rejects_handoff(&config, &workspace, &workspace.0.join("review-link"));
+    let outputs = validate_compiled_inputs(&config, &workspace.0, &review).unwrap();
+    for path in outputs
+        .outputs
+        .iter()
+        .map(|output| output.ownership.path)
+        .chain([RECORD])
+    {
+        let input = review.join(path);
+        let saved = fs::read(&input).unwrap();
+        fs::remove_file(&input).unwrap();
+        rejects_handoff(&config, &workspace, &review);
+        for dangling in [false, true] {
+            let target = if dangling { "absent" } else { "AGENTS.md" };
+            symlink(workspace.0.join(target), &input).unwrap();
+            rejects_handoff(&config, &workspace, &review);
+            fs::remove_file(&input).unwrap();
+        }
+        let listener = UnixListener::bind(&input).unwrap();
+        rejects_handoff(&config, &workspace, &review);
+        drop(listener);
+        fs::remove_file(&input).unwrap();
+        fs::create_dir(&input).unwrap();
+        rejects_handoff(&config, &workspace, &review);
+        fs::remove_dir(&input).unwrap();
+        fs::write(input, saved).unwrap();
+    }
+    for path in outputs
+        .outputs
+        .iter()
+        .map(|output| output.ownership.path)
+        .chain([".github/workflows", "scripts"])
+    {
+        let target = workspace.0.join(path);
+        if matches!(path, ".github/workflows" | "scripts") {
+            fs::remove_dir(&target).unwrap();
+        }
+        fs::create_dir_all(target.parent().unwrap()).unwrap();
+        for dangling in [false, true] {
+            let outside = if dangling { "absent" } else { "AGENTS.md" };
+            symlink(workspace.0.join(outside), &target).unwrap();
+            rejects_sync(&config, &workspace, &review);
+            fs::remove_file(&target).unwrap();
+        }
+        let listener = UnixListener::bind(&target).unwrap();
+        rejects_sync(&config, &workspace, &review);
+        drop(listener);
+        fs::remove_file(&target).unwrap();
+        fs::create_dir(&target).unwrap();
+        // Parent directories are valid; leaf directories are not.
+        if !matches!(path, ".github/workflows" | "scripts") {
+            rejects_sync(&config, &workspace, &review);
+        }
+        fs::remove_dir(&target).unwrap();
+    }
+}
+
+#[cfg(unix)]
+#[test]
+fn module_removal_uses_only_remaining_compilation_and_preserves_authored_files() {
+    let workspace = Workspace::new();
+    let review = reviewed_inputs(&workspace);
+    let arguments = [
+        "sync",
+        "--config",
+        "factory.toml",
+        "--compiled-inputs",
+        "review",
+    ];
+    succeeds(&handoff_cli(&workspace, &arguments));
+    for (path, contents) in [
+        ("docs/specs/project.md", "Authored spec.\n"),
+        ("factory/brief.md", "Authored brief.\n"),
+        ("scripts/unrelated.py", "# Unrelated helper.\n"),
+        ("commit-types.json", "Authored, now invalid JSON.\n"),
+    ] {
+        let target = workspace.0.join(path);
+        fs::create_dir_all(target.parent().unwrap()).unwrap();
+        fs::write(target, contents).unwrap();
+    }
+    let authored: BTreeMap<_, _> = [
+        "AGENTS.md",
+        "commit-types.json",
+        "docs/specs/project.md",
+        "factory/brief.md",
+        "scripts/unrelated.py",
+    ]
+    .map(|path| (path, fs::read(workspace.0.join(path)).unwrap()))
+    .into();
+    let mut config = workspace.config();
+    config.modules.build_cloud.enabled = false;
+    workspace.write_config(&config);
+    fs::remove_dir_all(&review).unwrap();
+    // The fake compiler checks that only Intake is requested.
+    let review = reviewed_inputs(&workspace);
+    let validated = validate_compiled_inputs(&config, &workspace.0, &review).unwrap();
+    assert_eq!(validated.outputs.len(), 2);
+    let before = snapshot(&workspace.0);
+    let report = acme::render::sync_repository_with_compiled_inputs(
+        &config,
+        &workspace.0,
+        true,
+        Some(&review),
+    )
+    .unwrap();
+    assert_eq!(
+        report.removals,
+        [
+            ".github/workflows/build-cloud.lock.yml",
+            ".github/workflows/build-cloud.md",
+            "scripts/check-build-approval.py",
+        ]
+    );
+    assert_eq!(snapshot(&workspace.0), before);
+    succeeds(&handoff_cli(&workspace, &arguments));
+    for path in &report.removals {
+        assert!(!workspace.0.join(path).exists());
+    }
+    for output in validated.outputs {
+        assert_eq!(
+            fs::read(workspace.0.join(output.ownership.path)).unwrap(),
+            output.contents,
+        );
+    }
+    config.modules.intake.enabled = false;
+    config.modules.spec.enabled = false;
+    // No disabled agent/compiler validation is needed for the M2-only path.
+    "v0.0.0".clone_into(&mut config.toolchain.gh_aw.version);
+    workspace.write_config(&config);
+    fs::remove_dir_all(review).unwrap();
+    fs::remove_dir_all(workspace.0.join("bin")).unwrap();
+    let before = snapshot(&workspace.0);
+    let check = handoff_cli(&workspace, &["sync", "--config", "factory.toml", "--check"]);
+    assert!(!check.status.success());
+    assert_eq!(snapshot(&workspace.0), before);
+    succeeds(&handoff_cli(
+        &workspace,
+        &["sync", "--config", "factory.toml"],
+    ));
+    for path in [
+        ".github/workflows/intake.md",
+        ".github/workflows/intake.lock.yml",
+        ".github/labels.yml",
+        ".github/ISSUE_TEMPLATE/bug.yml",
+        ".github/ISSUE_TEMPLATE/config.yml",
+        ".github/ISSUE_TEMPLATE/idea.yml",
+        ".github/ISSUE_TEMPLATE/spec-request.yml",
+    ] {
+        assert!(!workspace.0.join(path).exists());
+    }
+    for (path, contents) in authored {
+        assert_eq!(fs::read(workspace.0.join(path)).unwrap(), contents);
+    }
+    succeeds(&handoff_cli(
+        &workspace,
+        &["sync", "--config", "factory.toml", "--check"],
+    ));
+}
+
+#[cfg(unix)]
+#[test]
+fn agent_ownership_inventory_rejects_forged_paths_even_when_modules_are_disabled() {
+    let workspace = Workspace::new();
+    let review = reviewed_inputs(&workspace);
+    acme::render::sync_repository_with_compiled_inputs(
+        &workspace.config(),
+        &workspace.0,
+        false,
+        Some(&review),
+    )
+    .unwrap();
+    let record_path = workspace.0.join(OWNERSHIP);
+    let original = fs::read(&record_path).unwrap();
+    let mut config = workspace.config();
+    config.modules.intake.enabled = false;
+    config.modules.spec.enabled = false;
+    config.modules.build_cloud.enabled = false;
+    for (module, path) in [
+        ("intake", "AGENTS.md"),
+        ("build_cloud", "commit-types.json"),
+        ("build_cloud", "scripts/unrelated.py"),
+        ("intake", "scripts/check-build-approval.py"),
+        ("build_cloud", ".github/workflows/intake.lock.yml"),
+        ("build-cloud", ".github/workflows/build-cloud.lock.yml"),
+        ("build_cloud", "../escape"),
+        ("build_cloud", "/absolute"),
+        ("build_cloud", ".github\\workflows\\build-cloud.md"),
+    ] {
+        let mut record: Value = serde_json::from_slice(&original).unwrap();
+        record["entries"][0]["module"] = module.into();
+        record["entries"][0]["path"] = path.into();
+        fs::write(&record_path, serde_json::to_vec(&record).unwrap()).unwrap();
+        let before = snapshot(&workspace.0);
+        for check in [false, true] {
+            let error = acme::render::sync_repository(&config, &workspace.0, check).unwrap_err();
+            assert!(error.to_string().contains("inventory"), "{error}");
+            assert_eq!(snapshot(&workspace.0), before);
+        }
+    }
+}
+
+#[cfg(unix)]
+#[test]
+fn full_sync_partial_io_keeps_old_record_and_cleans_staged_files() {
+    use std::os::unix::fs::PermissionsExt;
+    for record_failure in [false, true] {
+        let workspace = Workspace::new();
+        reviewed_inputs(&workspace);
+        let arguments = [
+            "sync",
+            "--config",
+            "factory.toml",
+            "--compiled-inputs",
+            "review",
+        ];
+        succeeds(&handoff_cli(&workspace, &arguments));
+        let record_path = workspace.0.join(OWNERSHIP);
+        if record_failure {
+            let mut record: Value =
+                serde_json::from_slice(&fs::read(&record_path).unwrap()).unwrap();
+            record["acme_version"] = "0.0.1".into();
+            fs::write(&record_path, serde_json::to_vec(&record).unwrap()).unwrap();
+        } else {
+            fs::remove_file(workspace.0.join("scripts/check-build-approval.py")).unwrap();
+        }
+        let old_record = fs::read(&record_path).unwrap();
+        let lock = workspace.0.join(".github/workflows/build-cloud.lock.yml");
+        let lock_bytes = fs::read(&lock).unwrap();
+        fs::remove_file(&lock).unwrap();
+        let directory = workspace
+            .0
+            .join(if record_failure { "factory" } else { "scripts" });
+        let permissions = fs::metadata(&directory).unwrap().permissions();
+        fs::set_permissions(&directory, fs::Permissions::from_mode(0o555)).unwrap();
+        let result = handoff_cli(&workspace, &arguments);
+        fs::set_permissions(directory, permissions).unwrap();
+        assert!(!result.status.success());
+        let error = String::from_utf8_lossy(&result.stderr);
+        assert!(error.contains("sync I/O failure"), "{error}");
+        assert!(error.contains("after 1 output changes"), "{error}");
+        assert!(
+            error.contains("ownership record was not advanced"),
+            "{error}"
+        );
+        assert_eq!(fs::read(&record_path).unwrap(), old_record);
+        assert_eq!(fs::read(&lock).unwrap(), lock_bytes);
+        assert!(!snapshot(&workspace.0).keys().any(|path| {
+            path.file_name()
+                .unwrap()
+                .to_string_lossy()
+                .starts_with(".acme-sync-")
+        }));
+        succeeds(&handoff_cli(&workspace, &arguments));
+        succeeds(&handoff_cli(
+            &workspace,
+            &[arguments.as_slice(), &["--check"]].concat(),
+        ));
+    }
 }
 
 struct Workspace(PathBuf);
@@ -45,6 +682,15 @@ impl Workspace {
         env!("CARGO_PKG_VERSION").clone_into(&mut config.toolchain.acme.target_version);
         config
     }
+
+    #[cfg(unix)]
+    fn write_config(&self, config: &FactoryConfig) {
+        fs::write(
+            self.0.join("factory.toml"),
+            toml::to_string(config).unwrap(),
+        )
+        .unwrap();
+    }
 }
 
 impl Drop for Workspace {
@@ -64,6 +710,16 @@ fn executable(path: &Path, contents: &str) {
 fn compile_fixture(workspace: &Workspace, output: &str, behavior: &str) -> std::process::Output {
     let bin = workspace.0.join("bin");
     fs::create_dir_all(&bin).unwrap();
+    let config = workspace.config();
+    let mut arguments =
+        "compile --no-check-update --strict --action-mode action --action-tag v0.93.5".to_owned();
+    if config.modules.build_cloud.enabled {
+        arguments.push_str(" .github/workflows/build-cloud.md");
+    }
+    if config.modules.intake.enabled {
+        arguments.push_str(" .github/workflows/intake.md");
+    }
+    let count = arguments.split_whitespace().count();
     executable(
         &bin.join("gh-aw"),
         &format!(
@@ -71,8 +727,8 @@ fn compile_fixture(workspace: &Workspace, output: &str, behavior: &str) -> std::
              case \"$1\" in\n\
              version) printf 'gh aw version v0.93.5\\n'; exit 0;;\n\
              compile)\n\
-             test \"$#\" -eq 9 || exit 85\n\
-             test \"$*\" = 'compile --no-check-update --strict --action-mode action --action-tag v0.93.5 .github/workflows/build-cloud.md .github/workflows/intake.md' || exit 85\n\
+             test \"$#\" -eq {count} || exit 85\n\
+             test \"$*\" = '{arguments}' || exit 85\n\
              test -z \"$GH_TOKEN$GITHUB_TOKEN$GH_AW_MODEL$GH_AW_ACTION_TAG\" || exit 80\n\
              test -z \"$GH_AW_DEFAULT_DETECTION_MODEL$GHAW_POLICY_MODELS_ALLOWED$GHAW_POLICY_MODELS_BLOCKED\" || exit 84\n\
              test \"$HOME\" != '{root}' || exit 81\n\
@@ -178,11 +834,13 @@ fn validator_rejects_all_stale_edited_and_extra_inputs() {
         mutate(&mut value);
         fs::write(&record_path, serde_json::to_vec(&value).unwrap()).unwrap();
         assert!(validate_compiled_inputs(&config, &workspace.0, &directory).is_err());
+        rejects_handoff(&config, &workspace, &directory);
     }
     fs::write(&record_path, &original).unwrap();
     let mut stale = workspace.config();
     stale.solo = !stale.solo;
     assert!(validate_compiled_inputs(&stale, &workspace.0, &directory).is_err());
+    rejects_handoff(&stale, &workspace, &directory);
     for extra in ["extra", "empty-directory"] {
         let path = directory.join(extra);
         if extra == "extra" {
@@ -191,6 +849,7 @@ fn validator_rejects_all_stale_edited_and_extra_inputs() {
             fs::create_dir(&path).unwrap();
         }
         assert!(validate_compiled_inputs(&config, &workspace.0, &directory).is_err());
+        rejects_handoff(&config, &workspace, &directory);
         if path.is_dir() {
             fs::remove_dir(path).unwrap();
         } else {
@@ -209,10 +868,12 @@ fn validator_rejects_all_stale_edited_and_extra_inputs() {
     }
     fs::write(&record_path, serde_json::to_vec(&value).unwrap()).unwrap();
     assert!(validate_compiled_inputs(&config, &workspace.0, &directory).is_err());
+    rejects_handoff(&config, &workspace, &directory);
     fs::write(&source, source_bytes).unwrap();
     fs::write(&record_path, original).unwrap();
     fs::remove_file(directory.join(".github/workflows/intake.lock.yml")).unwrap();
     assert!(validate_compiled_inputs(&config, &workspace.0, &directory).is_err());
+    rejects_handoff(&config, &workspace, &directory);
 }
 
 #[cfg(unix)]

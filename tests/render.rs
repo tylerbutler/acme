@@ -9,28 +9,8 @@ const CI: &str = ".github/workflows/ci.yml";
 const RULESET: &str = ".github/rulesets/main.json";
 const GOLDENS: &[(&str, &[u8])] = &[
     (
-        ".github/ISSUE_TEMPLATE/bug.yml",
-        include_bytes!("../.github/ISSUE_TEMPLATE/bug.yml"),
-    ),
-    (
-        ".github/ISSUE_TEMPLATE/config.yml",
-        include_bytes!("../.github/ISSUE_TEMPLATE/config.yml"),
-    ),
-    (
-        ".github/ISSUE_TEMPLATE/idea.yml",
-        include_bytes!("../.github/ISSUE_TEMPLATE/idea.yml"),
-    ),
-    (
-        ".github/ISSUE_TEMPLATE/spec-request.yml",
-        include_bytes!("../.github/ISSUE_TEMPLATE/spec-request.yml"),
-    ),
-    (
         ".github/actions/setup-rust/action.yml",
         include_bytes!("../.github/actions/setup-rust/action.yml"),
-    ),
-    (
-        ".github/labels.yml",
-        include_bytes!("../.github/labels.yml"),
     ),
     (RULESET, include_bytes!("../.github/rulesets/main.json")),
     (CI, include_bytes!("../.github/workflows/ci.yml")),
@@ -39,6 +19,9 @@ const GOLDENS: &[(&str, &[u8])] = &[
 fn config() -> toml::Value {
     let mut config: toml::Value = toml::from_str(FACTORY).unwrap();
     config["toolchain"]["acme"]["target_version"] = env!("CARGO_PKG_VERSION").into();
+    for module in ["intake", "spec", "build_cloud"] {
+        config["modules"][module]["enabled"] = false.into();
+    }
     config
 }
 
@@ -143,7 +126,7 @@ fn golden(path: &str) -> String {
 }
 
 #[test]
-fn unchanged_factory_matches_every_golden_byte_and_repeats_identically() {
+fn m2_factory_matches_every_golden_byte_and_repeats_identically() {
     let workspace = Workspace::new();
     let first = workspace.0.join("first");
     let second = workspace.0.join("nested/second");
@@ -296,28 +279,17 @@ fn disabled_modules_remove_only_their_inventory() {
     for (disabled, removed) in [
         ("ci", vec![CI, ".github/actions/setup-rust/action.yml"]),
         ("merge", vec![RULESET]),
-        (
-            "intake",
-            vec![
-                ".github/labels.yml",
-                ".github/ISSUE_TEMPLATE/bug.yml",
-                ".github/ISSUE_TEMPLATE/config.yml",
-                ".github/ISSUE_TEMPLATE/idea.yml",
-                ".github/ISSUE_TEMPLATE/spec-request.yml",
-            ],
-        ),
     ] {
         let workspace = Workspace::new();
         let actual = workspace.changed(|config| {
             config["modules"][disabled]["enabled"] = false.into();
             if disabled == "ci" {
+                config["modules"]["spec"]["enabled"] = true.into();
+                config["modules"]["spec"]["needs"] = toml::Value::Array(vec![]);
                 config["modules"]["spec"]["provides"]
                     .as_array_mut()
                     .unwrap()
                     .push("ci".into());
-            } else if disabled == "intake" {
-                config["modules"]["spec"]["enabled"] = false.into();
-                config["modules"]["build_cloud"]["enabled"] = false.into();
             }
         });
         let mut expected = golden_tree();
@@ -334,6 +306,8 @@ fn external_ci_supports_multiple_json_escaped_required_checks() {
     let checks = ["Check \"one\"", "Check\\two\nthree"];
     let actual = workspace.changed(|config| {
         config["modules"]["ci"]["enabled"] = false.into();
+        config["modules"]["spec"]["enabled"] = true.into();
+        config["modules"]["spec"]["needs"] = toml::Value::Array(vec![]);
         config["modules"]["spec"]["provides"]
             .as_array_mut()
             .unwrap()
@@ -469,10 +443,7 @@ fn invalid_config_or_plan_fails_before_creating_the_destination() {
     for config in [
         "schema_version = [".to_owned(),
         fixture.replace("profile = \"cli\"", "profile = \"web\""),
-        fixture.replace(
-            "needs = [\"approved-spec\", \"ci\"]",
-            "needs = [\"missing\"]",
-        ),
+        fixture.replace("needs = [\"ci\"]", "needs = [\"missing\"]"),
     ] {
         fs::write(workspace.0.join("factory/factory.toml"), config).unwrap();
         let destination = workspace.0.join("not-created/output");

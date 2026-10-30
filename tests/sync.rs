@@ -9,7 +9,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 const FACTORY: &str = include_str!("../factory/factory.toml");
 const RECORD: &str = "factory/managed-files.json";
 const CI: &str = ".github/workflows/ci.yml";
-const LABELS: &str = ".github/labels.yml";
+const RULESET: &str = ".github/rulesets/main.json";
 
 struct Workspace(PathBuf);
 
@@ -25,6 +25,9 @@ impl Workspace {
         fs::create_dir(path.join("factory")).unwrap();
         let mut config: toml::Value = toml::from_str(FACTORY).unwrap();
         config["toolchain"]["acme"]["target_version"] = env!("CARGO_PKG_VERSION").into();
+        for module in ["intake", "spec", "build_cloud"] {
+            config["modules"][module]["enabled"] = false.into();
+        }
         fs::write(
             path.join("factory/factory.toml"),
             toml::to_string(&config).unwrap(),
@@ -90,10 +93,8 @@ fn fails(output: &Output, message: &str) {
     );
 }
 
-fn disable_intake(config: &mut toml::Value) {
-    for module in ["intake", "spec", "build_cloud"] {
-        config["modules"][module]["enabled"] = false.into();
-    }
+fn disable_merge(config: &mut toml::Value) {
+    config["modules"]["merge"]["enabled"] = false.into();
 }
 
 fn tree(root: &Path) -> BTreeMap<PathBuf, Vec<u8>> {
@@ -136,7 +137,7 @@ fn sync_creates_sorted_hashed_inventory_and_second_sync_is_a_noop() {
     assert_eq!(record["format_version"], 1);
     assert_eq!(record["acme_version"], env!("CARGO_PKG_VERSION"));
     let entries = record["entries"].as_array().unwrap();
-    assert_eq!(entries.len(), 8);
+    assert_eq!(entries.len(), 3);
     let paths: Vec<_> = entries
         .iter()
         .map(|entry| entry["path"].as_str().unwrap())
@@ -301,7 +302,7 @@ fn matching_hand_built_files_are_adopted_but_check_does_not_adopt() {
 fn owned_updates_and_missing_outputs_are_checked_then_applied() {
     let workspace = Workspace::new();
     workspace.sync();
-    fs::remove_file(workspace.0.join(LABELS)).unwrap();
+    fs::remove_file(workspace.0.join(RULESET)).unwrap();
     workspace.change(|config| {
         config["modules"]["ci"]["step_names"][0] = "Changed step".into();
     });
@@ -309,7 +310,7 @@ fn owned_updates_and_missing_outputs_are_checked_then_applied() {
     let output = workspace.run(&["sync", "--check"]);
     fails(&output, "drift");
     let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(stdout.contains(&format!("create {LABELS}")));
+    assert!(stdout.contains(&format!("create {RULESET}")));
     assert!(stdout.contains(&format!("update {CI}")));
     let changes: Vec<_> = stdout
         .lines()
@@ -327,33 +328,32 @@ fn owned_updates_and_missing_outputs_are_checked_then_applied() {
             .unwrap()
             .contains("Changed step")
     );
-    assert!(workspace.0.join(LABELS).is_file());
+    assert!(workspace.0.join(RULESET).is_file());
     succeeds(&workspace.run(&["sync", "--check"]));
 }
 
 #[test]
-fn disabling_intake_removes_only_recorded_outputs_and_keeps_directories() {
+fn disabling_merge_removes_only_recorded_outputs_and_keeps_directories() {
     let workspace = Workspace::new();
     workspace.sync();
-    let unrelated = workspace.0.join(".github/ISSUE_TEMPLATE/custom.yml");
+    let unrelated = workspace.0.join(".github/rulesets/custom.json");
     fs::write(&unrelated, "keep").unwrap();
     fs::write(workspace.0.join(".github/workflows/intake.md"), "keep").unwrap();
-    workspace.change(disable_intake);
+    workspace.change(disable_merge);
     let before = tree(&workspace.0);
     let output = workspace.run(&["sync", "--check"]);
     fails(&output, "drift");
-    assert!(String::from_utf8_lossy(&output.stdout).contains(&format!("remove {LABELS}")));
+    assert!(String::from_utf8_lossy(&output.stdout).contains(&format!("remove {RULESET}")));
     assert_eq!(tree(&workspace.0), before);
     workspace.sync();
-    assert!(!workspace.0.join(LABELS).exists());
-    assert!(!workspace.0.join(".github/ISSUE_TEMPLATE/bug.yml").exists());
-    assert!(workspace.0.join(".github/ISSUE_TEMPLATE").is_dir());
+    assert!(!workspace.0.join(RULESET).exists());
+    assert!(workspace.0.join(".github/rulesets").is_dir());
     assert_eq!(fs::read_to_string(unrelated).unwrap(), "keep");
     assert_eq!(
         fs::read_to_string(workspace.0.join(".github/workflows/intake.md")).unwrap(),
         "keep"
     );
-    assert_eq!(workspace.record()["entries"].as_array().unwrap().len(), 3);
+    assert_eq!(workspace.record()["entries"].as_array().unwrap().len(), 2);
     succeeds(&workspace.run(&["sync", "--check"]));
 }
 
@@ -365,7 +365,7 @@ fn conflict_late_in_plan_leaves_earlier_outputs_unchanged() {
     let before = tree(&workspace.0);
     fails(&workspace.run(&["sync"]), "unowned");
     assert_eq!(tree(&workspace.0), before);
-    assert!(!workspace.0.join(".github/ISSUE_TEMPLATE").exists());
+    assert!(!workspace.0.join(".github/actions").exists());
 }
 
 #[test]
@@ -373,10 +373,10 @@ fn modified_owned_outputs_block_updates_and_removals_before_any_writes() {
     for disabled in [false, true] {
         let workspace = Workspace::new();
         workspace.sync();
-        fs::write(workspace.0.join(LABELS), "human edit").unwrap();
+        fs::write(workspace.0.join(RULESET), "human edit").unwrap();
         workspace.change(|config| {
             if disabled {
-                disable_intake(config);
+                disable_merge(config);
             }
             config["modules"]["ci"]["step_names"][0] = "Changed step".into();
         });
@@ -427,7 +427,7 @@ fn malformed_forged_and_unsupported_records_are_rejected_without_writes() {
     ];
     for (field, value) in [
         ("module", json!("unknown")),
-        ("module", json!("ci")),
+        ("module", json!("ruleset")),
         ("path", json!("AGENTS.md")),
         ("path", json!("../outside")),
         ("path", json!("/tmp/outside")),
@@ -474,7 +474,7 @@ fn forged_disabled_owner_cannot_delete_arbitrary_files() {
     let workspace = Workspace::new();
     workspace.sync();
     fs::write(workspace.0.join("AGENTS.md"), "keep").unwrap();
-    workspace.change(disable_intake);
+    workspace.change(disable_merge);
     let mut record = workspace.record();
     record["entries"][0] = json!({
         "module": "issue-forms", "path": "AGENTS.md",
@@ -524,7 +524,7 @@ fn directories_at_output_or_record_paths_block_all_changes() {
         let workspace = Workspace::new();
         fs::create_dir_all(workspace.0.join(path)).unwrap();
         assert!(!workspace.run(&["sync"]).status.success());
-        assert!(!workspace.0.join(".github/ISSUE_TEMPLATE").exists());
+        assert!(!workspace.0.join(".github/actions").exists());
         assert!(workspace.0.join(path).is_dir());
     }
 }
@@ -564,7 +564,12 @@ fn all_symlink_leaves_and_ancestors_including_dangling_links_are_rejected() {
             fails(&workspace.run(&args), "symlink");
             assert_eq!(tree(&outside.0), before);
             assert!(fs::symlink_metadata(&path).unwrap().is_symlink());
-            assert!(!workspace.0.join(".github/ISSUE_TEMPLATE").exists());
+            assert!(
+                !workspace
+                    .0
+                    .join(".github/actions/setup-rust/action.yml")
+                    .exists()
+            );
         }
     }
 }
@@ -579,7 +584,7 @@ fn special_files_are_rejected_without_opening_them() {
         fs::create_dir_all(path.parent().unwrap()).unwrap();
         let _listener = UnixListener::bind(&path).unwrap();
         fails(&workspace.run(&["sync"]), "regular file");
-        assert!(!workspace.0.join(".github/ISSUE_TEMPLATE").exists());
+        assert!(!workspace.0.join(".github/actions").exists());
     }
 }
 
@@ -600,17 +605,26 @@ fn staged_update_does_not_change_other_hard_links() {
 fn missing_obsolete_outputs_are_forgotten_without_deleting_unowned_files() {
     let workspace = Workspace::new();
     workspace.sync();
-    fs::remove_file(workspace.0.join(LABELS)).unwrap();
+    fs::remove_file(workspace.0.join(RULESET)).unwrap();
     let mut record = workspace.record();
     record["entries"]
         .as_array_mut()
         .unwrap()
-        .retain(|entry| entry["path"] != ".github/ISSUE_TEMPLATE/bug.yml");
+        .retain(|entry| entry["path"] != CI);
     workspace.write_record(&record);
-    workspace.change(disable_intake);
+    workspace.change(|config| {
+        disable_merge(config);
+        config["modules"]["ci"]["enabled"] = false.into();
+    });
     workspace.sync();
-    assert!(workspace.0.join(".github/ISSUE_TEMPLATE/bug.yml").is_file());
-    assert!(!workspace.0.join(LABELS).exists());
+    assert!(workspace.0.join(CI).is_file());
+    assert!(!workspace.0.join(RULESET).exists());
+    assert!(
+        !workspace
+            .0
+            .join(".github/actions/setup-rust/action.yml")
+            .exists()
+    );
     succeeds(&workspace.run(&["sync", "--check"]));
 }
 
@@ -622,7 +636,7 @@ fn read_only_output_directory_reports_partial_application_and_keeps_record() {
     workspace.sync();
     let record = fs::read(workspace.0.join(RECORD)).unwrap();
     let ci = fs::read(workspace.0.join(CI)).unwrap();
-    fs::remove_file(workspace.0.join(LABELS)).unwrap();
+    fs::remove_file(workspace.0.join(RULESET)).unwrap();
     workspace.change(|config| config["modules"]["ci"]["step_names"][0] = "Changed step".into());
     let directory = workspace.0.join(".github/workflows");
     let permissions = fs::metadata(&directory).unwrap().permissions();
@@ -632,7 +646,7 @@ fn read_only_output_directory_reports_partial_application_and_keeps_record() {
     fails(&output, "sync I/O failure");
     fails(&output, "after 1 output changes");
     fails(&output, "ownership record was not advanced");
-    assert!(workspace.0.join(LABELS).is_file());
+    assert!(workspace.0.join(RULESET).is_file());
     assert_eq!(fs::read(workspace.0.join(CI)).unwrap(), ci);
     assert_eq!(fs::read(workspace.0.join(RECORD)).unwrap(), record);
     assert!(
@@ -700,7 +714,7 @@ fn staged_write_failure_cleans_temporary_file_without_replacing_output() {
 #[test]
 fn staged_filename_collisions_never_replace_existing_files() {
     let workspace = Workspace::new();
-    let parent = workspace.0.join(".github/ISSUE_TEMPLATE");
+    let parent = workspace.0.join(".github/actions/setup-rust");
     fs::create_dir_all(&parent).unwrap();
     let collisions: Vec<_> = (0..128)
         .map(|number| parent.join(format!(".acme-sync-{}-{number}.tmp", std::process::id())))

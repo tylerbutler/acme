@@ -117,18 +117,24 @@ fn init(mut args: impl Iterator<Item = String>) -> Result<(), String> {
 
 fn sync(mut args: impl Iterator<Item = String>) -> Result<(), String> {
     let mut config_path = None;
+    let mut compiled_inputs = None;
     let mut check = false;
     while let Some(argument) = args.next() {
         match argument.as_str() {
             "--check" if !check => check = true,
             "--check" => return Err("--check must be specified once.".to_owned()),
-            "--config" => {
+            "--config" | "--compiled-inputs" => {
                 let path = args
                     .next()
                     .filter(|path| !path.starts_with("--") && !path.is_empty())
-                    .ok_or("--config requires a path.")?;
-                if config_path.replace(PathBuf::from(path)).is_some() {
-                    return Err("--config must be specified once.".to_owned());
+                    .ok_or_else(|| format!("{argument} requires a path."))?;
+                let target = if argument == "--config" {
+                    &mut config_path
+                } else {
+                    &mut compiled_inputs
+                };
+                if target.replace(PathBuf::from(path)).is_some() {
+                    return Err(format!("{argument} must be specified once."));
                 }
             }
             _ => return Err(format!("unknown sync argument: {argument}")),
@@ -138,8 +144,13 @@ fn sync(mut args: impl Iterator<Item = String>) -> Result<(), String> {
     let config = FactoryConfig::load(&config_path).map_err(|error| error.to_string())?;
     let root =
         env::current_dir().map_err(|error| format!("failed to get current directory: {error}"))?;
-    let report =
-        acme::render::sync_repository(&config, &root, check).map_err(|error| error.to_string())?;
+    let report = acme::render::sync_repository_with_compiled_inputs(
+        &config,
+        &root,
+        check,
+        compiled_inputs.as_deref(),
+    )
+    .map_err(|error| error.to_string())?;
     print!("{report}");
     if check && !report.is_clean() {
         return Err("sync drift detected; run acme sync after review.".to_owned());
@@ -182,25 +193,36 @@ fn compile(mut args: impl Iterator<Item = String>) -> Result<(), String> {
 }
 
 fn render(mut args: impl Iterator<Item = String>) -> Result<(), String> {
-    let mut config_path = PathBuf::from("factory/factory.toml");
+    let mut config_path = None;
     let mut destination = None;
+    let mut compiled_inputs = None;
     while let Some(argument) = args.next() {
-        if !matches!(argument.as_str(), "--config" | "--output") {
-            return Err(format!("unknown render argument: {argument}"));
-        }
+        let target = match argument.as_str() {
+            "--config" => &mut config_path,
+            "--output" => &mut destination,
+            "--compiled-inputs" => &mut compiled_inputs,
+            _ => return Err(format!("unknown render argument: {argument}")),
+        };
         let path = args
             .next()
             .filter(|path| !path.starts_with("--") && !path.is_empty())
             .ok_or_else(|| format!("{argument} requires a path."))?;
-        if argument == "--config" {
-            config_path = PathBuf::from(path);
-        } else if destination.replace(PathBuf::from(path)).is_some() {
-            return Err("--output must be specified once.".to_owned());
+        if target.replace(PathBuf::from(path)).is_some() {
+            return Err(format!("{argument} must be specified once."));
         }
     }
     let destination = destination.ok_or("render requires --output DIR.")?;
+    let config_path = config_path.unwrap_or_else(|| PathBuf::from("factory/factory.toml"));
     let config = FactoryConfig::load(&config_path).map_err(|error| error.to_string())?;
-    acme::render::render_to_directory(&config, &destination).map_err(|error| error.to_string())?;
+    let repository =
+        env::current_dir().map_err(|error| format!("failed to get current directory: {error}"))?;
+    acme::render::render_to_directory_with_compiled_inputs(
+        &config,
+        &repository,
+        &destination,
+        compiled_inputs.as_deref(),
+    )
+    .map_err(|error| error.to_string())?;
     println!("Rendered approved config to {}.", destination.display());
     Ok(())
 }
