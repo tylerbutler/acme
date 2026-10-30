@@ -1,6 +1,6 @@
 use acme::{
-    FactoryConfig, GitHubError, GitHubMethod, GitHubTransport, checkout_repository, run_doctor,
-    run_doctor_fix,
+    FactoryConfig, GitHubError, GitHubMethod, GitHubTransport, checkout_repository,
+    run_doctor_fix_with_compiled_inputs, run_doctor_with_compiled_inputs,
 };
 use serde_json::Value;
 use std::env;
@@ -39,30 +39,46 @@ fn run() -> Result<(), String> {
         return Err(format!("acme {command} is not implemented."));
     }
 
-    let mut config_path = PathBuf::from("factory/factory.toml");
+    let mut config_path = None;
+    let mut compiled_inputs = None;
     let mut fix = false;
     while let Some(argument) = args.next() {
         if argument == "--fix" {
             fix = true;
             continue;
         }
-        if argument != "--config" {
+        if argument != "--config" && argument != "--compiled-inputs" {
             return Err(format!("unknown doctor argument: {argument}"));
         }
-        let Some(path) = args.next() else {
-            return Err("--config requires a path.".to_owned());
+        let path = args
+            .next()
+            .filter(|path| !path.starts_with("--") && !path.is_empty())
+            .ok_or_else(|| format!("{argument} requires a path."))?;
+        let target = if argument == "--config" {
+            &mut config_path
+        } else {
+            &mut compiled_inputs
         };
-        config_path = PathBuf::from(path);
+        if target.replace(PathBuf::from(path)).is_some() {
+            return Err(format!("{argument} must be specified once."));
+        }
     }
 
+    let config_path = config_path.unwrap_or_else(|| PathBuf::from("factory/factory.toml"));
     let config = FactoryConfig::load(&config_path).map_err(|error| error.to_string())?;
     let root =
         env::current_dir().map_err(|error| format!("failed to get current directory: {error}"))?;
     let report = if fix {
         let checkout = checkout_repository(&root)?;
-        run_doctor_fix(&config, &root, &GhTransport, checkout.as_deref())
+        run_doctor_fix_with_compiled_inputs(
+            &config,
+            &root,
+            &GhTransport,
+            checkout.as_deref(),
+            compiled_inputs.as_deref(),
+        )
     } else {
-        run_doctor(&config, &root, &GhTransport)
+        run_doctor_with_compiled_inputs(&config, &root, &GhTransport, compiled_inputs.as_deref())
     };
     println!("{report}");
     if report.is_success() {

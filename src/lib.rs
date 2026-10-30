@@ -25,6 +25,7 @@ pub use dispatch::{
 };
 pub use doctor::{
     Check, DoctorReport, GitHubError, GitHubMethod, GitHubTransport, checkout_repository,
-    run_doctor, run_doctor_fix,
+    run_doctor, run_doctor_fix, run_doctor_fix_with_compiled_inputs,
+    run_doctor_with_compiled_inputs,
 };
 pub use manifest::{ManifestError, ModuleManifest};

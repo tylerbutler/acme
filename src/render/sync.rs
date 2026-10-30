@@ -398,7 +398,7 @@ fn check_directories(path: &Path) -> Result<(), SyncError> {
     Ok(())
 }
 
-pub(super) fn read_regular(path: &Path) -> Result<Option<Vec<u8>>, SyncError> {
+pub fn read_regular(path: &Path) -> Result<Option<Vec<u8>>, SyncError> {
     check_directories(path.parent().expect("sync file has a parent"))?;
     match fs::symlink_metadata(path) {
         Ok(metadata) if metadata.is_symlink() => {

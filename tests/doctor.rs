@@ -1,6 +1,7 @@
 use acme::{
     FactoryConfig, GitHubError, GitHubMethod, GitHubTransport, builtin_modules,
-    checkout_repository, run_doctor, run_doctor_fix,
+    checkout_repository, run_doctor, run_doctor_fix, run_doctor_fix_with_compiled_inputs,
+    run_doctor_with_compiled_inputs,
 };
 use serde_json::{Value, json};
 use std::cell::RefCell;
@@ -15,7 +16,1109 @@ const LABELS: &str = "repos/tylerbutler/acme/labels?per_page=100";
 const RULESETS: &str = "repos/tylerbutler/acme/rulesets?per_page=100";
 const RULESET: &str = "repos/tylerbutler/acme/rulesets/7";
 const ACTIONS: &str = "repos/tylerbutler/acme/actions/permissions/workflow";
+const VARIABLES: &str = "repos/tylerbutler/acme/actions/variables?per_page=100";
+const INTAKE_STATE: &str = "repos/tylerbutler/acme/actions/workflows/intake.lock.yml";
+const BUILD_STATE: &str = "repos/tylerbutler/acme/actions/workflows/build-cloud.lock.yml";
+const WORKFLOW_GATE: &str = "ACME_AGENT_WORKFLOWS_ENABLED";
+const ASSIGNMENT_GATE: &str = "ACME_CLOUD_ASSIGNMENT_ENABLED";
+const SECRETS: &str = "repos/tylerbutler/acme/actions/secrets?per_page=100";
+const CONTROLLER_SELECTION: &str =
+    "${{ vars.GH_AW_MODEL_AGENT_COPILOT || vars.GH_AW_DEFAULT_MODEL_COPILOT || 'auto' }}";
+const DETECTION_SELECTION: &str =
+    "${{ vars.GH_AW_MODEL_DETECTION_COPILOT || vars.GH_AW_DEFAULT_MODEL_COPILOT || 'detection' }}";
+const DETECTION_FALLBACK: &str =
+    "${{ vars.GH_AW_MODEL_DETECTION_COPILOT || vars.GH_AW_DEFAULT_MODEL_COPILOT || 'auto' }}";
 type ConfigMutation = fn(&mut FactoryConfig);
+
+#[path = "support/compiled_fixture.rs"]
+mod compiled_fixture;
+
+fn agent_config() -> FactoryConfig {
+    let mut config = FactoryConfig::load(Path::new(ROOT).join("factory/factory.toml")).unwrap();
+    env!("CARGO_PKG_VERSION").clone_into(&mut config.toolchain.acme.target_version);
+    config
+}
+
+struct AgentFixture {
+    root: PathBuf,
+    review: compiled_fixture::ReviewFixture,
+}
+
+impl AgentFixture {
+    fn new(config: &FactoryConfig) -> Self {
+        let root = temporary_root();
+        copy_assets(&root);
+        fs::copy(Path::new(ROOT).join("AGENTS.md"), root.join("AGENTS.md")).unwrap();
+        fs::copy(
+            Path::new(ROOT).join("commit-types.json"),
+            root.join("commit-types.json"),
+        )
+        .unwrap();
+        fs::write(root.join("factory.toml"), toml::to_string(config).unwrap()).unwrap();
+        Self {
+            root,
+            review: compiled_fixture::ReviewFixture::new(),
+        }
+    }
+
+    fn compiled(&self) -> PathBuf {
+        self.review
+            .refresh(&self.root, Path::new("factory.toml"))
+            .unwrap()
+    }
+
+    fn adopt(&self, config: &FactoryConfig, compiled: &Path) {
+        let inputs = acme::render::validate_compiled_inputs(config, &self.root, compiled).unwrap();
+        for output in inputs.outputs {
+            let path = self.root.join(output.ownership.path);
+            fs::create_dir_all(path.parent().unwrap()).unwrap();
+            fs::write(path, output.contents).unwrap();
+        }
+    }
+}
+
+impl Drop for AgentFixture {
+    fn drop(&mut self) {
+        fs::remove_dir_all(&self.root).unwrap();
+    }
+}
+
+#[test]
+fn enabled_agents_require_reviewed_compiled_inputs_without_implicit_compilation() {
+    let config = agent_config();
+    let report = run_doctor(&config, Path::new(ROOT), &FakeGitHub::matching());
+    assert!(!report.is_success(), "{report}");
+    let check = report
+        .checks
+        .iter()
+        .find(|check| check.id == "local.agent.compiled-inputs")
+        .expect("explicit compiled-input check");
+    assert!(!check.passed);
+    assert!(check.repair.contains("--compiled-inputs DIR"));
+}
+
+#[test]
+fn configured_activation_flags_are_reported_separately_from_remote_state() {
+    let mut config = agent_config();
+    config.modules.build_cloud.workflow_enabled = true;
+    config.modules.build_cloud.assignment_enabled = false;
+    config.modules.build_cloud.staged = true;
+    let report = run_doctor(&config, Path::new(ROOT), &FakeGitHub::matching());
+    let configured = check(&report, "local.agent.build-cloud.activation-config");
+    assert!(configured.passed);
+    assert_eq!(
+        configured.observed,
+        "workflow_enabled=true; assignment_enabled=false; effective source gate=false; staged=true"
+    );
+    assert!(check(&report, "github.agent.build-cloud.workflow-state").passed);
+    assert!(
+        !check(
+            &report,
+            "github.agent.variable.ACME_CLOUD_ASSIGNMENT_ENABLED"
+        )
+        .passed
+    );
+}
+
+#[test]
+fn cleanly_absent_activation_variables_are_off_but_cannot_enable_active_workflows() {
+    for active in [false, true] {
+        let mut config = agent_config();
+        config.modules.intake.workflow_enabled = active;
+        config.modules.intake.staged = !active;
+        config.modules.build_cloud.workflow_enabled = active;
+        config.modules.build_cloud.assignment_enabled = active;
+        config.modules.build_cloud.staged = !active;
+        let fixture = AgentFixture::new(&config);
+        let compiled = fixture.compiled();
+        fixture.adopt(&config, &compiled);
+        let mut github = FakeGitHub::matching();
+        github.responses.insert(
+            VARIABLES.to_owned(),
+            vec![json!({"total_count": 0, "variables": []})],
+        );
+        for endpoint in [INTAKE_STATE, BUILD_STATE] {
+            github.responses.get_mut(endpoint).unwrap()[0]["state"] = json!(if active {
+                "active"
+            } else {
+                "disabled_manually"
+            });
+        }
+        let report =
+            run_doctor_with_compiled_inputs(&config, &fixture.root, &github, Some(&compiled));
+        for name in [
+            "ACME_AGENT_WORKFLOWS_ENABLED",
+            "ACME_CLOUD_ASSIGNMENT_ENABLED",
+        ] {
+            let gate = check(&report, &format!("github.agent.variable.{name}"));
+            assert_eq!(gate.passed, !active, "{report}");
+            assert_eq!(gate.observed, "absent; workflow gate is off");
+        }
+        assert_eq!(report.is_success(), !active, "{report}");
+    }
+}
+
+#[test]
+fn fork_disabled_workflows_are_inactive_but_deleted_workflows_are_not() {
+    let mut config = agent_config();
+    config.modules.intake.workflow_enabled = false;
+    config.modules.intake.staged = true;
+    config.modules.build_cloud.workflow_enabled = false;
+    config.modules.build_cloud.assignment_enabled = false;
+    config.modules.build_cloud.staged = true;
+    let fixture = AgentFixture::new(&config);
+    let compiled = fixture.compiled();
+    fixture.adopt(&config, &compiled);
+    let mut github = FakeGitHub::matching();
+    github.responses.insert(
+        VARIABLES.to_owned(),
+        vec![json!({"total_count": 0, "variables": []})],
+    );
+    for (state, expected_pass) in [("disabled_fork", true), ("deleted", false)] {
+        for endpoint in [INTAKE_STATE, BUILD_STATE] {
+            github.responses.get_mut(endpoint).unwrap()[0]["state"] = json!(state);
+        }
+        let report =
+            run_doctor_with_compiled_inputs(&config, &fixture.root, &github, Some(&compiled));
+        assert_eq!(report.is_success(), expected_pass, "{report}");
+        for id in [
+            "github.agent.intake.workflow-state",
+            "github.agent.build-cloud.workflow-state",
+        ] {
+            let workflow = check(&report, id);
+            assert_eq!(workflow.passed, expected_pass);
+            assert_eq!(workflow.observed, state);
+        }
+    }
+}
+
+#[test]
+fn variable_listing_handles_pagination_without_reporting_unrelated_values() {
+    let config = agent_config();
+    let mut github = FakeGitHub::matching();
+    github.responses.insert(
+        VARIABLES.to_owned(),
+        vec![
+            json!({"total_count": 3, "variables": [
+                {"name": "UNRELATED", "value": "do-not-print-this-value"},
+                {"name": "ACME_AGENT_WORKFLOWS_ENABLED", "value": "true"}
+            ]}),
+            json!({"total_count": 3, "variables": [
+                {"name": "ACME_CLOUD_ASSIGNMENT_ENABLED", "value": "true"}
+            ]}),
+        ],
+    );
+    let report = run_doctor(&config, Path::new(ROOT), &github);
+    for id in [
+        "github.agent.variables",
+        "github.agent.variable.ACME_AGENT_WORKFLOWS_ENABLED",
+        "github.agent.variable.ACME_CLOUD_ASSIGNMENT_ENABLED",
+    ] {
+        assert!(check(&report, id).passed, "{report}");
+    }
+    assert!(!report.to_string().contains("do-not-print-this-value"));
+    assert!(!report.to_string().contains("UNRELATED"));
+    assert_eq!(
+        github
+            .calls
+            .borrow()
+            .iter()
+            .filter(|endpoint| *endpoint == VARIABLES)
+            .count(),
+        1
+    );
+}
+
+#[test]
+fn inactive_variable_listing_errors_never_become_clean_absence() {
+    let mut config = agent_config();
+    config.modules.intake.workflow_enabled = false;
+    config.modules.build_cloud.workflow_enabled = false;
+    config.modules.build_cloud.assignment_enabled = false;
+    for pages in [
+        vec![],
+        vec![json!([])],
+        vec![json!({"total_count": "0", "variables": []})],
+        vec![json!({"total_count": 1, "variables": []})],
+        vec![json!({"total_count": 1, "variables": [{"name": "ANY_NAME"}]})],
+        vec![
+            json!({"total_count": 2, "variables": [{"name": "SAME", "value": "false"}, {"name": "same", "value": "false"}]}),
+        ],
+        vec![
+            json!({"total_count": 0, "variables": []}),
+            json!({"total_count": 1, "variables": []}),
+        ],
+    ] {
+        let mut github = FakeGitHub::matching();
+        github.responses.insert(VARIABLES.to_owned(), pages);
+        let report = run_doctor(&config, Path::new(ROOT), &github);
+        assert!(!check(&report, "github.agent.variables").passed);
+        assert!(
+            !report
+                .checks
+                .iter()
+                .any(|check| check.id.starts_with("github.agent.variable."))
+        );
+    }
+    for error in [
+        GitHubError::AuthenticationRequired,
+        GitHubError::PermissionDenied,
+        GitHubError::ApiFailure,
+    ] {
+        let mut github = FakeGitHub::matching();
+        github.error = Some(error);
+        let report = run_doctor(&config, Path::new(ROOT), &github);
+        assert!(!check(&report, "github.agent.variables").passed);
+        assert!(!report.to_string().contains("absent; workflow gate is off"));
+    }
+    for value in ["off", "FALSE", "1"] {
+        let mut github = FakeGitHub::matching();
+        set_gate(&mut github, WORKFLOW_GATE, value);
+        let report = run_doctor(&config, Path::new(ROOT), &github);
+        assert!(
+            !check(
+                &report,
+                "github.agent.variable.ACME_AGENT_WORKFLOWS_ENABLED"
+            )
+            .passed
+        );
+    }
+}
+
+#[test]
+fn agent_sources_are_checked_even_without_compiled_inputs() {
+    let config = agent_config();
+    let root = temporary_root();
+    copy_assets(&root);
+    fs::copy(Path::new(ROOT).join("AGENTS.md"), root.join("AGENTS.md")).unwrap();
+    fs::copy(
+        Path::new(ROOT).join("commit-types.json"),
+        root.join("commit-types.json"),
+    )
+    .unwrap();
+    let plan = acme::render::build_agent_source_plan(&config, &root).unwrap();
+    for output in plan.outputs {
+        let path = root.join(output.path);
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        fs::write(path, output.contents).unwrap();
+    }
+    let path = root.join(".github/workflows/intake.md");
+    fs::write(&path, "permissions: write-all\n").unwrap();
+    let report = run_doctor(&config, &root, &FakeGitHub::matching());
+    assert!(
+        report.checks.iter().any(|check| {
+            check.id == "local.agent.asset._github_workflows_intake_md" && !check.passed
+        }),
+        "{report}"
+    );
+    assert_eq!(
+        fs::read_to_string(path).unwrap(),
+        "permissions: write-all\n"
+    );
+    fs::remove_dir_all(root).unwrap();
+}
+
+fn check<'a>(report: &'a acme::DoctorReport, id: &str) -> &'a acme::Check {
+    report
+        .checks
+        .iter()
+        .find(|check| check.id == id)
+        .unwrap_or_else(|| panic!("missing {id}\n{report}"))
+}
+
+fn set_gate(github: &mut FakeGitHub, name: &str, value: &str) {
+    let variables = github.responses.get_mut(VARIABLES).unwrap()[0]["variables"]
+        .as_array_mut()
+        .unwrap();
+    variables
+        .iter_mut()
+        .find(|variable| variable["name"] == name)
+        .unwrap()["value"] = json!(value);
+}
+
+fn agent_asset_id(path: &str) -> String {
+    format!(
+        "local.agent.asset.{}",
+        path.chars()
+            .map(|character| {
+                if character.is_ascii_alphanumeric() {
+                    character.to_ascii_lowercase()
+                } else {
+                    '_'
+                }
+            })
+            .collect::<String>()
+    )
+}
+
+#[test]
+fn live_and_staged_inactive_agent_fixtures_pass_with_reviewed_inputs() {
+    for (intake_active, build_active, assignment) in [
+        (true, true, true),
+        (false, false, false),
+        (true, false, false),
+        (false, true, false),
+        (false, false, true),
+    ] {
+        let mut config = agent_config();
+        config.modules.intake.workflow_enabled = intake_active;
+        config.modules.build_cloud.workflow_enabled = build_active;
+        config.modules.build_cloud.assignment_enabled = assignment;
+        config.modules.intake.staged = !intake_active;
+        config.modules.build_cloud.staged = !assignment;
+        let fixture = AgentFixture::new(&config);
+        let compiled = fixture.compiled();
+        fixture.adopt(&config, &compiled);
+        let mut github = FakeGitHub::matching();
+        github.responses.insert(
+            INTAKE_STATE.to_owned(),
+            vec![json!({"state": if intake_active { "active" } else { "disabled_manually" }})],
+        );
+        github.responses.insert(
+            BUILD_STATE.to_owned(),
+            vec![json!({"state": if build_active { "active" } else { "disabled_manually" }})],
+        );
+        set_gate(
+            &mut github,
+            WORKFLOW_GATE,
+            if intake_active || build_active {
+                "true"
+            } else {
+                "false"
+            },
+        );
+        set_gate(
+            &mut github,
+            ASSIGNMENT_GATE,
+            if assignment { "true" } else { "false" },
+        );
+        let before = fs::read(fixture.root.join(".github/workflows/build-cloud.md")).unwrap();
+        let report =
+            run_doctor_with_compiled_inputs(&config, &fixture.root, &github, Some(&compiled));
+        assert!(report.is_success(), "{report}");
+        assert_eq!(
+            fs::read(fixture.root.join(".github/workflows/build-cloud.md")).unwrap(),
+            before
+        );
+        let mut calls = github.calls.borrow().clone();
+        calls.sort();
+        let mut allowed: Vec<_> = [
+            LABELS,
+            RULESETS,
+            RULESET,
+            REPOSITORY,
+            ACTIONS,
+            INTAKE_STATE,
+            BUILD_STATE,
+            VARIABLES,
+            SECRETS,
+        ]
+        .map(str::to_owned)
+        .into();
+        allowed.sort();
+        assert_eq!(
+            calls, allowed,
+            "no logs, tools, compiler, dispatch or inference endpoints"
+        );
+    }
+}
+
+#[test]
+fn exact_source_helper_and_lock_drift_fails_without_rewrites() {
+    let config = agent_config();
+    let fixture = AgentFixture::new(&config);
+    let compiled = fixture.compiled();
+    fixture.adopt(&config, &compiled);
+    for (path, from, to) in [
+        (
+            ".github/workflows/intake.md",
+            "issues: read",
+            "issues: write",
+        ),
+        (
+            ".github/workflows/intake.md",
+            "roles: [admin]",
+            "roles: [read]",
+        ),
+        (
+            ".github/workflows/intake.md",
+            "max-ai-credits: 5000",
+            "max-ai-credits: 9999",
+        ),
+        (
+            ".github/workflows/intake.md",
+            "staged: false",
+            "staged: true",
+        ),
+        (".github/workflows/intake.md", "== 'true'", "!= 'true'"),
+        (
+            ".github/workflows/build-cloud.md",
+            "github.actor == github.repository_owner",
+            "true",
+        ),
+        (
+            ".github/workflows/build-cloud.md",
+            "target: triggering",
+            "target: all",
+        ),
+        (".github/workflows/build-cloud.md", "max: 1", "max: 2"),
+        (
+            ".github/workflows/build-cloud.md",
+            "model: gpt-6.1-sol",
+            "model: auto",
+        ),
+        (
+            ".github/workflows/build-cloud.md",
+            "needs: [approval]",
+            "needs: [activation]",
+        ),
+        (
+            "scripts/check-build-approval.py",
+            "import",
+            "# drift\nimport",
+        ),
+        (
+            ".github/workflows/intake.lock.yml",
+            "contents: read",
+            "contents: write",
+        ),
+        (
+            ".github/workflows/build-cloud.lock.yml",
+            "contents: read",
+            "contents: write",
+        ),
+    ] {
+        let target = fixture.root.join(path);
+        let original = fs::read_to_string(&target).unwrap();
+        assert!(original.contains(from), "{path}: {from}");
+        let changed = original.replacen(from, to, 1);
+        fs::write(&target, &changed).unwrap();
+        let report = run_doctor_with_compiled_inputs(
+            &config,
+            &fixture.root,
+            &FakeGitHub::matching(),
+            Some(&compiled),
+        );
+        assert!(
+            !check(&report, &agent_asset_id(path)).passed,
+            "{path}\n{report}"
+        );
+        assert!(check(&report, "local.agent.compiled-inputs").passed);
+        assert_eq!(fs::read_to_string(&target).unwrap(), changed);
+        fs::write(target, original).unwrap();
+    }
+}
+
+#[test]
+fn compiled_inputs_missing_edited_extra_and_stale_fail_explicitly() {
+    let config = agent_config();
+    let fixture = AgentFixture::new(&config);
+    let compiled = fixture.compiled();
+    fixture.adopt(&config, &compiled);
+    let run = |config: &FactoryConfig, path: &Path| {
+        let report = run_doctor_with_compiled_inputs(
+            config,
+            &fixture.root,
+            &FakeGitHub::matching(),
+            Some(path),
+        );
+        assert!(
+            !check(&report, "local.agent.compiled-inputs").passed,
+            "{report}"
+        );
+    };
+    run(&config, &fixture.root.join("missing-review"));
+    let record_path = compiled.join("compiled-workflows.json");
+    let record = fs::read(&record_path).unwrap();
+    fs::remove_file(&record_path).unwrap();
+    run(&config, &compiled);
+    fs::write(&record_path, b"{}").unwrap();
+    run(&config, &compiled);
+    fs::write(&record_path, record).unwrap();
+    let lock = compiled.join(".github/workflows/intake.lock.yml");
+    let bytes = fs::read(&lock).unwrap();
+    fs::write(&lock, "edited lock").unwrap();
+    run(&config, &compiled);
+    fs::write(lock, bytes).unwrap();
+    fs::write(compiled.join("extra"), "unexpected").unwrap();
+    run(&config, &compiled);
+    fs::remove_file(compiled.join("extra")).unwrap();
+    let mut stale = agent_config();
+    stale.modules.intake.staged = !stale.modules.intake.staged;
+    run(&stale, &compiled);
+    let mut wrong_pin = agent_config();
+    wrong_pin.toolchain.acme.target_version = "99.0.0".to_owned();
+    run(&wrong_pin, &compiled);
+}
+
+#[cfg(unix)]
+#[test]
+fn unsafe_checkout_and_compiled_paths_are_not_followed() {
+    use std::os::unix::fs::symlink;
+    let config = agent_config();
+    let fixture = AgentFixture::new(&config);
+    let compiled = fixture.compiled();
+    fixture.adopt(&config, &compiled);
+    for path in [
+        ".github/workflows/intake.md",
+        ".github/workflows/intake.lock.yml",
+        "scripts/check-build-approval.py",
+        "AGENTS.md",
+        "commit-types.json",
+    ] {
+        let target = fixture.root.join(path);
+        let bytes = fs::read(&target).unwrap();
+        let outside = fixture.root.join("symlink-target");
+        fs::rename(&target, &outside).unwrap();
+        symlink(&outside, &target).unwrap();
+        let report = run_doctor_with_compiled_inputs(
+            &config,
+            &fixture.root,
+            &FakeGitHub::matching(),
+            Some(&compiled),
+        );
+        let id = if ["AGENTS.md", "commit-types.json"].contains(&path) {
+            "local.agent.source-plan".to_owned()
+        } else {
+            agent_asset_id(path)
+        };
+        assert!(!check(&report, &id).passed, "{report}");
+        assert_eq!(fs::read(&outside).unwrap(), bytes);
+        fs::remove_file(&target).unwrap();
+        fs::rename(outside, target).unwrap();
+    }
+    let directory = fixture.root.join(".github/workflows");
+    let outside = fixture.root.join("outside-workflows");
+    fs::rename(&directory, &outside).unwrap();
+    symlink(&outside, &directory).unwrap();
+    let report = run_doctor_with_compiled_inputs(
+        &config,
+        &fixture.root,
+        &FakeGitHub::matching(),
+        Some(&compiled),
+    );
+    assert!(!check(&report, &agent_asset_id(".github/workflows/intake.md")).passed);
+    assert!(
+        !check(
+            &report,
+            &agent_asset_id(".github/workflows/intake.lock.yml")
+        )
+        .passed
+    );
+    fs::remove_file(&directory).unwrap();
+    fs::rename(outside, directory).unwrap();
+
+    let linked = fixture.root.join("linked-review");
+    symlink(&compiled, &linked).unwrap();
+    let report = run_doctor_with_compiled_inputs(
+        &config,
+        &fixture.root,
+        &FakeGitHub::matching(),
+        Some(&linked),
+    );
+    assert!(!check(&report, "local.agent.compiled-inputs").passed);
+    let lock = compiled.join(".github/workflows/intake.lock.yml");
+    fs::remove_file(&lock).unwrap();
+    symlink(
+        fixture.root.join(".github/workflows/intake.lock.yml"),
+        &lock,
+    )
+    .unwrap();
+    let report = run_doctor_with_compiled_inputs(
+        &config,
+        &fixture.root,
+        &FakeGitHub::matching(),
+        Some(&compiled),
+    );
+    assert!(!check(&report, "local.agent.compiled-inputs").passed);
+}
+
+#[test]
+fn missing_and_nonregular_agent_files_and_authored_prerequisites_fail() {
+    let config = agent_config();
+    let fixture = AgentFixture::new(&config);
+    let compiled = fixture.compiled();
+    fixture.adopt(&config, &compiled);
+    for path in [
+        ".github/workflows/intake.md",
+        ".github/workflows/build-cloud.md",
+        ".github/workflows/intake.lock.yml",
+        "scripts/check-build-approval.py",
+        "AGENTS.md",
+        "commit-types.json",
+    ] {
+        let target = fixture.root.join(path);
+        let bytes = fs::read(&target).unwrap();
+        fs::remove_file(&target).unwrap();
+        for directory in [false, true] {
+            if directory {
+                fs::create_dir(&target).unwrap();
+            }
+            let report = run_doctor_with_compiled_inputs(
+                &config,
+                &fixture.root,
+                &FakeGitHub::matching(),
+                Some(&compiled),
+            );
+            let id = if ["AGENTS.md", "commit-types.json"].contains(&path) {
+                "local.agent.source-plan".to_owned()
+            } else {
+                agent_asset_id(path)
+            };
+            assert!(!check(&report, &id).passed, "{path}\n{report}");
+            if directory {
+                fs::remove_dir(&target).unwrap();
+            }
+        }
+        fs::write(target, bytes).unwrap();
+    }
+    fs::write(fixture.root.join("commit-types.json"), "{}").unwrap();
+    let report = run_doctor(&config, &fixture.root, &FakeGitHub::matching());
+    assert!(!check(&report, "local.agent.source-plan").passed);
+}
+
+#[test]
+fn model_roles_and_runtime_expressions_are_separate_from_unavailable_usage_evidence() {
+    use acme::config::ModelId;
+    for (controller, detection) in [
+        (None, None),
+        (Some("gpt-4.1"), None),
+        (None, Some("gpt-4.1")),
+        (Some("gpt-4.1"), Some("gpt-5.1")),
+    ] {
+        let mut config = agent_config();
+        config.engines.intake.controller_model =
+            controller.map(|model| ModelId::try_from(model.to_owned()).unwrap());
+        config.engines.intake.detection_model =
+            detection.map(|model| ModelId::try_from(model.to_owned()).unwrap());
+        config.engines.build_cloud.controller_model =
+            controller.map(|model| ModelId::try_from(model.to_owned()).unwrap());
+        config.engines.build_cloud.detection_model =
+            detection.map(|model| ModelId::try_from(model.to_owned()).unwrap());
+        config.engines.build_cloud.model = "gpt-4.1".to_owned();
+        let fixture = AgentFixture::new(&config);
+        let compiled = fixture.compiled();
+        fixture.adopt(&config, &compiled);
+        let report = run_doctor_with_compiled_inputs(
+            &config,
+            &fixture.root,
+            &FakeGitHub::matching(),
+            Some(&compiled),
+        );
+        assert!(report.is_success(), "{report}");
+        for module in ["intake", "build-cloud"] {
+            for (role, model) in [("controller", controller), ("detection", detection)] {
+                assert!(
+                    check(&report, &format!("agent.models.{module}.{role}.configured"))
+                        .observed
+                        .contains(model.unwrap_or("omitted")),
+                    "configured model role is missing"
+                );
+                assert!(
+                    check(
+                        &report,
+                        &format!("agent.models.{module}.{role}.runtime-selection")
+                    )
+                    .observed
+                    .contains("vars.GH_AW_"),
+                    "runtime selection is missing"
+                );
+            }
+            let evidence =
+                &check(&report, &format!("agent.models.{module}.usage-evidence")).observed;
+            for (selection, expected) in [
+                ("controller.runtime-selection", CONTROLLER_SELECTION),
+                ("detection.runtime-selection", DETECTION_SELECTION),
+                ("detection.runtime-fallback", DETECTION_FALLBACK),
+            ] {
+                assert_eq!(
+                    check(&report, &format!("agent.models.{module}.{selection}")).observed,
+                    expected
+                );
+            }
+            assert!(
+                evidence.contains("unavailable")
+                    && evidence.contains("serving model unknown")
+                    && evidence.contains("separation is not verified")
+            );
+        }
+        assert_eq!(
+            check(&report, "agent.models.build-cloud.builder.configured").observed,
+            "gpt-4.1"
+        );
+        assert_eq!(
+            check(
+                &report,
+                "agent.models.build-cloud.builder.runtime-selection"
+            )
+            .observed,
+            "gpt-6.1-sol"
+        );
+    }
+}
+
+#[test]
+fn malformed_and_drifted_agent_remote_metadata_fails_without_exposing_response_fields() {
+    let config = agent_config();
+    for (endpoint, id, responses) in [
+        (INTAKE_STATE, "github.agent.intake.workflow-state", vec![]),
+        (
+            INTAKE_STATE,
+            "github.agent.intake.workflow-state",
+            vec![json!({"state": "disabled_manually"})],
+        ),
+        (
+            BUILD_STATE,
+            "github.agent.build-cloud.workflow-state",
+            vec![json!({"state": null})],
+        ),
+        (
+            BUILD_STATE,
+            "github.agent.build-cloud.workflow-state",
+            vec![json!({"state": "unknown-secret-value"})],
+        ),
+        (
+            BUILD_STATE,
+            "github.agent.build-cloud.workflow-state",
+            vec![json!({"state": "active"}), json!({"state": "active"})],
+        ),
+        (
+            VARIABLES,
+            "github.agent.variable.ACME_AGENT_WORKFLOWS_ENABLED",
+            vec![
+                json!({"total_count": 1, "variables": [{"name": "ACME_AGENT_WORKFLOWS_ENABLED", "value": "false"}]}),
+            ],
+        ),
+        (
+            VARIABLES,
+            "github.agent.variables",
+            vec![
+                json!({"total_count": 1, "variables": [{"name": "ACME_AGENT_WORKFLOWS_ENABLED", "value": true}]}),
+            ],
+        ),
+        (
+            VARIABLES,
+            "github.agent.variable.ACME_CLOUD_ASSIGNMENT_ENABLED",
+            vec![json!({"total_count": 1, "variables": [{"name": "wrong", "value": "true"}]})],
+        ),
+        (
+            VARIABLES,
+            "github.agent.variable.ACME_CLOUD_ASSIGNMENT_ENABLED",
+            vec![
+                json!({"total_count": 1, "variables": [{"name": "ACME_CLOUD_ASSIGNMENT_ENABLED", "value": "unknown-secret-value"}]}),
+            ],
+        ),
+        (
+            VARIABLES,
+            "github.agent.variables",
+            vec![json!({"variables": [{"name": "ACME_AGENT_WORKFLOWS_ENABLED", "value": "true"}]})],
+        ),
+        (
+            VARIABLES,
+            "github.agent.variables",
+            vec![
+                json!({"total_count": 2, "variables": [{"name": "ACME_CLOUD_ASSIGNMENT_ENABLED", "value": "true"}]}),
+                json!({"total_count": 2, "variables": [{"name": "ACME_CLOUD_ASSIGNMENT_ENABLED", "value": "true"}]}),
+            ],
+        ),
+    ] {
+        let mut github = FakeGitHub::matching();
+        github.responses.insert(endpoint.to_owned(), responses);
+        let report = run_doctor(&config, Path::new(ROOT), &github);
+        assert!(!check(&report, id).passed, "{endpoint}\n{report}");
+        assert!(!report.to_string().contains("unknown-secret-value"));
+    }
+}
+
+#[test]
+fn malformed_secret_metadata_fails_without_exposing_response_fields() {
+    let config = agent_config();
+    for (endpoint, id, responses) in [
+        (
+            SECRETS,
+            "github.agent.secret-names",
+            vec![json!([{"name": "GH_PAT"}])],
+        ),
+        (
+            SECRETS,
+            "github.agent.secret-names",
+            vec![json!({"total_count": "1", "secrets": [{"name": "GH_PAT"}]})],
+        ),
+        (
+            SECRETS,
+            "github.agent.secret-names",
+            vec![json!({"total_count": 1, "secrets": null})],
+        ),
+        (
+            SECRETS,
+            "github.agent.secret-names",
+            vec![json!({"secrets": [{"name": "GH_PAT"}]})],
+        ),
+        (
+            SECRETS,
+            "github.agent.secret-names",
+            vec![json!({"total_count": 2, "secrets": [{"name": "GH_PAT"}]})],
+        ),
+        (
+            SECRETS,
+            "github.agent.secret-names",
+            vec![json!({"total_count": 1, "secrets": [{"name": "invalid-name"}]})],
+        ),
+        (
+            SECRETS,
+            "github.agent.secret-names",
+            vec![json!({"total_count": 1, "secrets": [{"value": "unknown-secret-value"}]})],
+        ),
+        (
+            SECRETS,
+            "github.agent.secret-names",
+            vec![json!({"total_count": 2, "secrets": [{"name": "GH_PAT"}, {"name": "gh_pat"}]})],
+        ),
+        (
+            SECRETS,
+            "github.agent.secret-names",
+            vec![
+                json!({"total_count": 1, "secrets": [{"name": "GH_PAT"}]}),
+                json!({"total_count": 2, "secrets": []}),
+            ],
+        ),
+    ] {
+        let mut github = FakeGitHub::matching();
+        github.responses.insert(endpoint.to_owned(), responses);
+        let report = run_doctor(&config, Path::new(ROOT), &github);
+        assert!(!check(&report, id).passed, "{endpoint}\n{report}");
+        assert!(!report.to_string().contains("unknown-secret-value"));
+    }
+}
+
+#[test]
+fn remote_secret_metadata_is_paginated_and_checks_distinct_configured_names_only() {
+    let mut config = agent_config();
+    config.engines.intake.token_secret = "intake_inference".to_owned();
+    config.engines.build_cloud.token_secret = "BUILD_INFERENCE".to_owned();
+    config.modules.build_cloud.token_secret = "BUILD_ASSIGNMENT".to_owned();
+    let mut github = FakeGitHub::matching();
+    github.responses.insert(SECRETS.to_owned(), vec![
+        json!({"total_count": 4, "secrets": [{"name": "INTAKE_INFERENCE", "value": "unknown-secret-value"}, {"name": "BUILD_INFERENCE"}]}),
+        json!({"total_count": 4, "secrets": [{"name": "BUILD_ASSIGNMENT"}, {"name": "OTHER_NAME"}]}),
+    ]);
+    let report = run_doctor(&config, Path::new(ROOT), &github);
+    for id in [
+        "github.agent.secret-names",
+        "github.agent.secret.intake.inference",
+        "github.agent.secret.build-cloud.inference",
+        "github.agent.secret.build-cloud.assignment",
+    ] {
+        assert!(check(&report, id).passed, "{report}");
+    }
+    let text = report.to_string();
+    assert!(text.contains("OTHER_NAME"));
+    assert!(!text.contains("unknown-secret-value"));
+    assert!(text.contains("presence does not verify scopes or assignment capability"));
+
+    github.responses.insert(
+        SECRETS.to_owned(),
+        vec![json!({"total_count": 0, "secrets": []})],
+    );
+    let report = run_doctor(&config, Path::new(ROOT), &github);
+    assert!(check(&report, "github.agent.secret-names").passed);
+    for role in [
+        "intake.inference",
+        "build-cloud.inference",
+        "build-cloud.assignment",
+    ] {
+        assert!(
+            !check(&report, &format!("github.agent.secret.{role}")).passed,
+            "missing configured secret must fail"
+        );
+    }
+}
+
+#[test]
+fn lowercase_secret_references_match_uppercase_names_and_reject_case_duplicates() {
+    let mut config = agent_config();
+    config.engines.intake.token_secret = "gh_pat".to_owned();
+    config.engines.build_cloud.token_secret = "gh_pat".to_owned();
+    config.modules.build_cloud.token_secret = "gh_pat".to_owned();
+    let fixture = AgentFixture::new(&config);
+    let compiled = fixture.compiled();
+    fixture.adopt(&config, &compiled);
+    let mut github = FakeGitHub::matching();
+    let report = run_doctor_with_compiled_inputs(&config, &fixture.root, &github, Some(&compiled));
+    assert!(report.is_success(), "{report}");
+    for role in [
+        "intake.inference",
+        "build-cloud.inference",
+        "build-cloud.assignment",
+    ] {
+        let credential = check(&report, &format!("github.agent.secret.{role}"));
+        assert!(credential.passed);
+        assert_eq!(
+            credential.expected,
+            "configured secret name gh_pat is present"
+        );
+    }
+
+    github.responses.insert(
+        SECRETS.to_owned(),
+        vec![
+            json!({"total_count": 2, "secrets": [{"name": "GH_PAT"}]}),
+            json!({"total_count": 2, "secrets": [{"name": "gh_pat"}]}),
+        ],
+    );
+    let report = run_doctor_with_compiled_inputs(&config, &fixture.root, &github, Some(&compiled));
+    assert!(!check(&report, "github.agent.secret-names").passed);
+}
+
+#[test]
+fn inactive_unprovisioned_credentials_fail_despite_stored_token_metadata() {
+    for stored in [false, true] {
+        let mut config = agent_config();
+        config.modules.intake.workflow_enabled = false;
+        config.modules.intake.staged = true;
+        config.modules.build_cloud.workflow_enabled = false;
+        config.modules.build_cloud.assignment_enabled = false;
+        config.modules.build_cloud.staged = true;
+        config.modules.build_cloud.token_configured = stored;
+        config.modules.build_cloud.token_verified = stored;
+        let fixture = AgentFixture::new(&config);
+        let compiled = fixture.compiled();
+        fixture.adopt(&config, &compiled);
+        let mut github = FakeGitHub::matching();
+        for endpoint in [INTAKE_STATE, BUILD_STATE] {
+            github.responses.get_mut(endpoint).unwrap()[0]["state"] = json!("disabled_manually");
+        }
+        for name in [WORKFLOW_GATE, ASSIGNMENT_GATE] {
+            set_gate(&mut github, name, "false");
+        }
+        github.responses.insert(
+            SECRETS.to_owned(),
+            vec![json!({"total_count": 0, "secrets": []})],
+        );
+        let report =
+            run_doctor_with_compiled_inputs(&config, &fixture.root, &github, Some(&compiled));
+        assert!(!report.is_success());
+        let failures: Vec<_> = report
+            .checks
+            .iter()
+            .filter(|check| !check.passed)
+            .map(|check| {
+                assert_eq!(check.observed, "configured secret name is absent");
+                check.id.as_str()
+            })
+            .collect();
+        assert_eq!(
+            failures,
+            [
+                "github.agent.secret.intake.inference",
+                "github.agent.secret.build-cloud.inference",
+                "github.agent.secret.build-cloud.assignment",
+            ],
+            "inactive gates pass, but stored metadata cannot prove credential presence"
+        );
+        assert!(check(&report, "github.agent.secret-names").passed);
+        assert!(
+            github
+                .calls
+                .borrow()
+                .iter()
+                .all(|endpoint| { !endpoint.contains("dispatch") && !endpoint.contains("enable") })
+        );
+    }
+}
+
+#[test]
+fn remote_agent_api_failures_and_missing_endpoints_are_explicit_failed_checks() {
+    let config = agent_config();
+    for (endpoint, id) in [
+        (INTAKE_STATE, "github.agent.intake.workflow-state"),
+        (BUILD_STATE, "github.agent.build-cloud.workflow-state"),
+        (VARIABLES, "github.agent.variables"),
+        (SECRETS, "github.agent.secret-names"),
+    ] {
+        let mut github = FakeGitHub::matching();
+        github.responses.remove(endpoint);
+        let report = run_doctor(&config, Path::new(ROOT), &github);
+        assert!(!check(&report, id).passed);
+        for error in [
+            GitHubError::AuthenticationRequired,
+            GitHubError::PermissionDenied,
+            GitHubError::ApiFailure,
+        ] {
+            github.error = Some(error);
+            let report = run_doctor(&config, Path::new(ROOT), &github);
+            assert!(!check(&report, id).passed);
+        }
+    }
+}
+
+#[test]
+fn unreadable_secret_metadata_is_not_reported_as_credential_absence() {
+    struct SecretError {
+        github: FakeGitHub,
+        error: GitHubError,
+    }
+
+    impl GitHubTransport for SecretError {
+        fn get(&self, endpoint: &str) -> Result<Vec<Value>, GitHubError> {
+            if endpoint == SECRETS {
+                Err(self.error)
+            } else {
+                self.github.get(endpoint)
+            }
+        }
+    }
+
+    let config = agent_config();
+    for (error, observed) in [
+        (
+            GitHubError::AuthenticationRequired,
+            "authentication required",
+        ),
+        (GitHubError::PermissionDenied, "insufficient permission"),
+        (GitHubError::ApiFailure, "GitHub API request failed"),
+    ] {
+        let github = SecretError {
+            github: FakeGitHub::matching(),
+            error,
+        };
+        let report = run_doctor(&config, Path::new(ROOT), &github);
+        let names = check(&report, "github.agent.secret-names");
+        assert!(!names.passed);
+        assert_eq!(names.observed, observed);
+        assert!(
+            !report
+                .checks
+                .iter()
+                .any(|check| check.id.starts_with("github.agent.secret."))
+        );
+        assert!(
+            !report
+                .to_string()
+                .contains("configured secret name is absent")
+        );
+    }
+}
+
+#[test]
+fn disabled_agent_modules_do_not_require_review_inputs_or_agent_metadata_requests() {
+    let mut config = agent_config();
+    config.modules.intake.enabled = false;
+    config.modules.build_cloud.enabled = false;
+    let github = FakeGitHub::matching();
+    let report = run_doctor(&config, Path::new(ROOT), &github);
+    assert!(
+        !report
+            .checks
+            .iter()
+            .any(|check| check.id.starts_with("local.agent.")
+                || check.id.starts_with("github.agent.")
+                || check.id.starts_with("agent.models."))
+    );
+    assert!(github.calls.borrow().iter().all(|endpoint| {
+        [LABELS, RULESETS, RULESET, REPOSITORY, ACTIONS].contains(&endpoint.as_str())
+    }));
+}
 
 #[derive(Clone)]
 struct FakeGitHub {
@@ -36,6 +1139,19 @@ impl FakeGitHub {
             .expect("ruleset fixture");
         Self {
             responses: HashMap::from([
+                (INTAKE_STATE.to_owned(), vec![json!({"state": "active"})]),
+                (BUILD_STATE.to_owned(), vec![json!({"state": "active"})]),
+                (
+                    VARIABLES.to_owned(),
+                    vec![json!({"total_count": 2, "variables": [
+                        {"name": "ACME_AGENT_WORKFLOWS_ENABLED", "value": "true"},
+                        {"name": "ACME_CLOUD_ASSIGNMENT_ENABLED", "value": "true"}
+                    ]})],
+                ),
+                (
+                    SECRETS.to_owned(),
+                    vec![json!({"total_count": 1, "secrets": [{"name": "GH_PAT"}]})],
+                ),
                 (LABELS.to_owned(), vec![labels]),
                 (
                     RULESETS.to_owned(),
@@ -82,8 +1198,9 @@ impl GitHubTransport for FakeGitHub {
 
 #[test]
 fn matching_local_tree_and_paginated_github_state_pass_without_writes() {
-    let config =
-        FactoryConfig::load(Path::new(ROOT).join("factory/factory.toml")).expect("fixture config");
+    let config = agent_config();
+    let fixture = AgentFixture::new(&config);
+    let compiled = fixture.compiled();
     let mut github = FakeGitHub::matching();
     let labels = github.responses.get(LABELS).expect("labels").clone();
     let rulesets = github.responses.get(RULESETS).expect("rulesets").clone();
@@ -98,7 +1215,8 @@ fn matching_local_tree_and_paginated_github_state_pass_without_writes() {
         vec![json!([{"id": 6, "name": "unmanaged"}]), rulesets[0].clone()],
     );
 
-    let report = run_doctor(&config, Path::new(ROOT), &github);
+    let report =
+        run_doctor_with_compiled_inputs(&config, Path::new(ROOT), &github, Some(&compiled));
 
     assert!(report.is_success(), "{report}");
     assert!(
@@ -363,7 +1481,7 @@ fn authentication_and_permission_errors_are_unsuccessful_without_leaking_values(
         let report = run_doctor(&config, Path::new(ROOT), &github);
         assert!(!report.is_success());
         assert!(report.to_string().contains(observed));
-        assert!(!report.to_string().contains("GH_PAT"));
+        assert!(!report.to_string().contains("secret-value"));
     }
 }
 
@@ -628,9 +1746,16 @@ impl RepairGitHub {
     }
 
     fn fix(&self, root: &Path) -> acme::DoctorReport {
-        let config = FactoryConfig::load(Path::new(ROOT).join("factory/factory.toml"))
-            .expect("fixture config");
-        run_doctor_fix(&config, root, self, Some("tylerbutler/acme"))
+        let config = agent_config();
+        let fixture = AgentFixture::new(&config);
+        let compiled = fixture.compiled();
+        run_doctor_fix_with_compiled_inputs(
+            &config,
+            root,
+            self,
+            Some("tylerbutler/acme"),
+            Some(&compiled),
+        )
     }
 }
 
@@ -713,6 +1838,138 @@ impl GitHubTransport for RepairGitHub {
 }
 
 #[test]
+fn agent_drift_never_adds_repairs_to_the_existing_bounded_plan() {
+    let config = agent_config();
+    let fixture = AgentFixture::new(&config);
+    let compiled = fixture.compiled();
+    fixture.adopt(&config, &compiled);
+    fs::write(
+        fixture.root.join(".github/workflows/intake.md"),
+        "unsafe change",
+    )
+    .unwrap();
+    fs::write(
+        fixture.root.join(".github/workflows/build-cloud.lock.yml"),
+        "unsafe lock",
+    )
+    .unwrap();
+    fs::write(
+        fixture.root.join("scripts/check-build-approval.py"),
+        "unsafe helper",
+    )
+    .unwrap();
+    let github = RepairGitHub::matching();
+    {
+        let mut state = github.state.borrow_mut();
+        Mutation::Label("color", json!("000000")).apply(&mut state);
+        state.responses.get_mut(INTAKE_STATE).unwrap()[0]["state"] = json!("disabled_manually");
+        state.responses.get_mut(BUILD_STATE).unwrap()[0]["state"] = json!("disabled_manually");
+        set_gate(&mut state, WORKFLOW_GATE, "false");
+        set_gate(&mut state, ASSIGNMENT_GATE, "false");
+        state.responses.insert(
+            SECRETS.to_owned(),
+            vec![json!({"total_count": 0, "secrets": []})],
+        );
+    }
+    let report = run_doctor_fix_with_compiled_inputs(
+        &config,
+        &fixture.root,
+        &github,
+        Some("tylerbutler/acme"),
+        Some(&compiled),
+    );
+    assert!(!report.is_success());
+    assert!(check(&report, "github.label.needs_spec").passed);
+    assert!(
+        check(&report, "local.agent.compiled-inputs").passed,
+        "post-fix checks retain reviewed inputs"
+    );
+    assert_eq!(
+        *github.writes.borrow(),
+        [(
+            GitHubMethod::Patch,
+            format!("{REPOSITORY}/labels/needs-spec"),
+            json!({"color": "D4C5F9"})
+        )]
+    );
+    for endpoint in [INTAKE_STATE, BUILD_STATE, VARIABLES, SECRETS] {
+        assert_eq!(
+            github
+                .state
+                .borrow()
+                .calls
+                .borrow()
+                .iter()
+                .filter(|call| *call == endpoint)
+                .count(),
+            2,
+            "fresh metadata checks: {endpoint}"
+        );
+    }
+    assert_eq!(
+        fs::read_to_string(fixture.root.join("scripts/check-build-approval.py")).unwrap(),
+        "unsafe helper"
+    );
+}
+
+#[test]
+fn fix_revalidates_supplied_compiled_inputs_after_a_write() {
+    struct ChangingReview {
+        github: RepairGitHub,
+        record: PathBuf,
+    }
+    impl GitHubTransport for ChangingReview {
+        fn get(&self, endpoint: &str) -> Result<Vec<Value>, GitHubError> {
+            self.github.get(endpoint)
+        }
+
+        fn write(
+            &self,
+            method: GitHubMethod,
+            endpoint: &str,
+            body: &Value,
+        ) -> Result<(), GitHubError> {
+            self.github.write(method, endpoint, body)?;
+            fs::write(&self.record, "{}").unwrap();
+            Ok(())
+        }
+    }
+    let config = agent_config();
+    let fixture = AgentFixture::new(&config);
+    let compiled = fixture.compiled();
+    fixture.adopt(&config, &compiled);
+    let github = ChangingReview {
+        github: RepairGitHub::matching(),
+        record: compiled.join("compiled-workflows.json"),
+    };
+    Mutation::Label("color", json!("000000")).apply(&mut github.github.state.borrow_mut());
+    let report = run_doctor_fix_with_compiled_inputs(
+        &config,
+        &fixture.root,
+        &github,
+        Some("tylerbutler/acme"),
+        Some(&compiled),
+    );
+    assert!(
+        !check(&report, "local.agent.compiled-inputs").passed,
+        "{report}"
+    );
+    assert!(check(&report, "github.label.needs_spec").passed);
+    assert_eq!(github.github.writes.borrow().len(), 1);
+}
+
+#[test]
+fn old_fix_wrapper_keeps_the_no_input_failure_after_bounded_repairs() {
+    let config = agent_config();
+    let github = RepairGitHub::matching();
+    Mutation::Label("color", json!("000000")).apply(&mut github.state.borrow_mut());
+    let report = run_doctor_fix(&config, Path::new(ROOT), &github, Some("tylerbutler/acme"));
+    assert!(!check(&report, "local.agent.compiled-inputs").passed);
+    assert!(check(&report, "github.label.needs_spec").passed);
+    assert_eq!(github.writes.borrow().len(), 1);
+}
+
+#[test]
 fn fix_repairs_each_supported_setting_and_second_fix_is_a_no_op() {
     for (_, mutation) in label_mutations()
         .into_iter()
@@ -737,8 +1994,11 @@ fn fix_repairs_each_supported_setting_and_second_fix_is_a_no_op() {
 fn label_hex_color_case_is_not_drift_and_needs_no_write() {
     let github = RepairGitHub::matching();
     Mutation::Label("color", json!("d4c5f9")).apply(&mut github.state.borrow_mut());
-    let config = FactoryConfig::load(Path::new(ROOT).join("factory/factory.toml")).expect("config");
-    let report = run_doctor(&config, Path::new(ROOT), &github);
+    let config = agent_config();
+    let fixture = AgentFixture::new(&config);
+    let compiled = fixture.compiled();
+    let report =
+        run_doctor_with_compiled_inputs(&config, Path::new(ROOT), &github, Some(&compiled));
     assert!(report.is_success(), "{report}");
     let report = github.fix(Path::new(ROOT));
     assert!(report.is_success(), "{report}");
@@ -1118,6 +2378,11 @@ else:
     )
     .expect("write fake gh");
     fs::set_permissions(&gh, fs::Permissions::from_mode(0o755)).expect("fake gh executable");
+    for tool in ["gh-aw", "actionlint"] {
+        let path = root.join(tool);
+        fs::write(&path, "#!/usr/bin/env python3\nimport os\nfrom pathlib import Path\nPath(os.environ['ACME_TEST_STATE'] + '.compiler-called').touch()\nraise SystemExit(99)\n").unwrap();
+        fs::set_permissions(path, fs::Permissions::from_mode(0o755)).unwrap();
+    }
 }
 
 #[cfg(unix)]
@@ -1125,8 +2390,11 @@ else:
 fn cli_uses_explicit_bounded_writes_and_verifies_with_a_fake_gh_process() {
     use std::process::Command;
 
-    let root = temporary_root();
-    copy_assets(&root);
+    let config = agent_config();
+    let fixture = AgentFixture::new(&config);
+    let compiled = fixture.compiled();
+    fixture.adopt(&config, &compiled);
+    let root = fixture.root.clone();
     git(&root, &["init", "--quiet"]);
     git(
         &root,
@@ -1157,7 +2425,9 @@ fn cli_uses_explicit_bounded_writes_and_verifies_with_a_fake_gh_process() {
             .env("PATH", &paths)
             .env("ACME_TEST_STATE", &state_path)
             .args(["doctor", "--config"])
-            .arg(Path::new(ROOT).join("factory/factory.toml"));
+            .arg(root.join("factory.toml"))
+            .arg("--compiled-inputs")
+            .arg(&compiled);
         if fix {
             command.arg("--fix");
         }
@@ -1176,6 +2446,13 @@ fn cli_uses_explicit_bounded_writes_and_verifies_with_a_fake_gh_process() {
         );
         assert!(String::from_utf8_lossy(&output.stdout).contains("PASS github.label.needs_spec"));
     }
+    let output = invoke(false);
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stdout)
+    );
+    assert!(!root.join("state.json.compiler-called").exists());
     assert_eq!(
         fs::read_to_string(root.join("state.json.writes"))
             .expect("write log")
@@ -1196,5 +2473,4 @@ fn cli_uses_explicit_bounded_writes_and_verifies_with_a_fake_gh_process() {
     let output = invoke(true);
     assert!(!output.status.success());
     assert!(String::from_utf8_lossy(&output.stdout).contains("conflicts with the checkout"));
-    fs::remove_dir_all(root).expect("remove temporary root");
 }
