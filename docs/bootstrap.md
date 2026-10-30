@@ -345,6 +345,131 @@ run read-only doctor. Unchanged outputs may require only an ownership-record
 version change. The next sync must be a no-op. Do not edit recorded hashes to
 override modified owned files.
 
+## Owner-only M5 release and adoption
+
+Track this work in [#96](https://github.com/tylerbutler/acme/issues/96), under
+the [M5 contract](specs/0006-m5-agent-modules-contract.md). The implementation
+prerequisites merged in
+[#105](https://github.com/tylerbutler/acme/pull/105),
+[#106](https://github.com/tylerbutler/acme/pull/106) and
+[#107](https://github.com/tylerbutler/acme/pull/107).
+
+The `0.3.0` candidate includes the M5 implementation. The existing `v0.2.0`
+tag identifies older code; never move it to this implementation. The live
+factory stays pinned to `0.1.0` until the owner approves a separate adoption
+change. Preparing this release does not publish it, install a binary or adopt
+workflow files.
+
+Only the owner may publish the release. Publication, installation and live
+adoption require explicit owner action or approval. Keep the current workflow
+enablement, variable gates, staging, model choices, secret references and
+budgets unchanged. Do not use bootstrap mode or a fictitious pin. Do not run
+`doctor --fix`, provisioning, workflow jobs or paid acceptance tests.
+
+### Build and publish the merged release
+
+1. Select the human-merged release-preparation revision on `main`. Confirm that
+   its package version is `0.3.0` and the checkout is clean. Use the pinned Rust
+   toolchain, then record these commands and their results:
+
+   ```sh
+   git rev-parse HEAD
+   rustc --version
+   just check
+   cargo build --locked --release --bin acme
+   shasum -a 256 target/release/acme
+   ```
+
+   On macOS, use `TMPDIR=/private/tmp just check` if the default temporary path
+   has symlink components. Record the environment override with the results.
+   Preserve the binary outside `target/`, together with its revision, package
+   version, toolchain and SHA-256. Do not rebuild it from an unmerged adoption
+   branch and call it the released binary.
+2. The owner publishes a new immutable `v0.3.0` tag on that exact merged
+   revision. If it already exists, verify its target; do not move it. Record
+   the tag and release evidence in #96. Changes to released code require a new
+   package version and tag.
+3. Explicitly install the preserved binary at the intended executable path.
+   Retain the previous binary until adoption is complete. Compare the installed
+   binary's SHA-256 with the recorded build hash, and use that explicit path
+   for every command below. The examples call it `acme_binary`:
+
+   ```sh
+   acme_binary="$HOME/.local/bin/acme"
+   shasum -a 256 "$acme_binary"
+   ```
+
+   The path is an example, not an installation command. The CLI has no
+   self-update or automatic download step.
+
+### Prepare and verify the adoption change
+
+1. On a separate adoption branch, review a change to only
+   `toolchain.acme.target_version` in `factory/factory.toml`, from `"0.1.0"`
+   to `"0.3.0"`. Keep `bootstrap = false` and all other config values unchanged.
+   The package version, real release tag and installed binary must match.
+2. Install gh-aw `v0.93.5` and native actionlint `1.7.12` or later if missing.
+   Tool installation is an explicit prerequisite, not part of compilation.
+   With the approved config, compile and render into separate new directories:
+
+   ```sh
+   review=$(mktemp -d)
+   preview=$(mktemp -d)
+   "$acme_binary" compile --config factory/factory.toml --output "$review"
+   "$acme_binary" render --config factory/factory.toml \
+     --compiled-inputs "$review" --output "$preview"
+   ```
+
+   Use canonical directory paths without symlink components. On macOS,
+   set `TMPDIR=/private/tmp` before these commands if needed. Keep temporary
+   compilation outside Git checkouts. Compilation does not run inference or
+   workflow jobs.
+3. Compare every rendered file with its matching checkout path using raw bytes.
+   Require all 13 files to match: the 8 M2 files listed in stage0 adoption,
+   both workflow Markdown files, both compiled locks and
+   `scripts/check-build-approval.py`. Include hidden `.github` paths.
+   Review the compilation record and preserve the comparison evidence.
+   `compiled-workflows.json` is review metadata, not a managed checkout file.
+   Stop on any difference; do not copy output over live files or edit locks
+   or recorded hashes to force adoption.
+4. Inspect the complete sync plan:
+
+   ```sh
+   "$acme_binary" sync --check --config factory/factory.toml \
+     --compiled-inputs "$review"
+   ```
+
+   Before adoption, an ownership-record change is expected and makes check
+   mode fail. It must not request workflow content changes. Resolve conflicts
+   through review before proceeding. After explicit owner approval, run:
+
+   ```sh
+   "$acme_binary" sync --config factory/factory.toml --compiled-inputs "$review"
+   "$acme_binary" sync --config factory/factory.toml --compiled-inputs "$review"
+   "$acme_binary" sync --check --config factory/factory.toml \
+     --compiled-inputs "$review"
+   "$acme_binary" doctor --config factory/factory.toml \
+     --compiled-inputs "$review"
+   ```
+
+   The first sync adopts exact outputs and writes ownership metadata. The
+   second sync must be a no-op, and the final check must pass. Doctor is
+   read-only and requires authenticated `gh`. Record all results, including
+   failures, unavailable API evidence and deferred checks. Do not claim that
+   credential-name checks verify token scopes or assignment capability.
+5. Review the config pin and `factory/managed-files.json` diff. Expect the
+   generating version to become `0.3.0`, with the existing M2 entries preserved
+   and five exact agent-module ownership entries added. No workflow, helper or
+   other rendered content may change for this adoption. Link the draft adoption
+   PR, release revision/tag, installed binary hash, compilation record,
+   comparison, sync reports and fresh doctor report in #96. Preserve the review
+   directory outside the checkout until review is complete.
+
+Only the owner reviews and merges the adoption PR. Keep #96 open until its
+release and adoption evidence is complete and the adoption change is
+human-merged. Staged/live event acceptance is separate work with separate
+owner approval.
+
 ## M4 release preparation and template handoff
 
 The `0.2.0` candidate adds deterministic local `acme init` for an approved
