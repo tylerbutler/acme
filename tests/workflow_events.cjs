@@ -79,22 +79,65 @@ const github = {
 const originalLoad = Module._load;
 const isolatedFiles = path.join(process.cwd(), "runtime-files");
 fs.mkdirSync(path.join(isolatedFiles, "gh-aw"), { recursive: true });
-function isolatedPath(value) {
-  if (typeof value !== "string") return value;
-  if (value.startsWith("/tmp/gh-aw")) {
-    return path.join(isolatedFiles, value.slice("/tmp/".length));
+const inside = (value, root) => value === root || value.startsWith(root + path.sep);
+function isolatedPath(value, write) {
+  if (typeof value !== "string") return forbidden("non-string file path");
+  const mapped = value === "/tmp/gh-aw" || value.startsWith("/tmp/gh-aw/")
+    ? path.join(isolatedFiles, value.slice("/tmp/".length))
+    : value;
+  const resolved = path.resolve(mapped);
+  const workspace = fs.realpathSync(process.cwd());
+  if (!inside(resolved, workspace) && (write || !inside(resolved, runtime))) {
+    return forbidden(`file ${value}`);
   }
-  const resolved = path.resolve(value);
-  if (resolved.startsWith(process.cwd() + path.sep) || resolved.startsWith(runtime + path.sep)) {
-    return value;
+  let ancestor = resolved;
+  const missing = [];
+  while (!fs.lstatSync(ancestor, { throwIfNoEntry: false })) {
+    missing.unshift(path.basename(ancestor));
+    ancestor = path.dirname(ancestor);
   }
+  const real = path.resolve(fs.realpathSync(ancestor), ...missing);
+  if (inside(real, workspace) || (!write && inside(real, runtime))) return resolved;
   return forbidden(`file ${value}`);
 }
+const reads = new Set(["existsSync", "readFileSync", "statSync", "lstatSync", "readdirSync", "realpathSync", "accessSync", "createReadStream"]);
+const mutations = new Set(["writeFileSync", "appendFileSync", "mkdirSync", "rmSync", "unlinkSync", "rmdirSync", "chmodSync", "truncateSync"]);
+const descriptors = new Set();
 const fileSystem = new Proxy(fs, {
   get(target, name) {
     if (name === "promises") return forbidden("fs.promises");
     if (typeof target[name] !== "function") return target[name];
-    return (file, ...args) => target[name](isolatedPath(file), ...args);
+    if (reads.has(name) || mutations.has(name)) {
+      return (file, ...args) => {
+        if (name === "readFileSync" || name === "createReadStream") {
+          const flags = args[0]?.[name === "readFileSync" ? "flag" : "flags"];
+          if (flags !== undefined && flags !== "r" && flags !== 0) {
+            return forbidden(`fs.${name} writable flags`);
+          }
+        }
+        return target[name](isolatedPath(file, mutations.has(name)), ...args);
+      };
+    }
+    if (name === "renameSync" || name === "copyFileSync") {
+      return (source, destination, ...args) => target[name](
+        isolatedPath(source, name === "renameSync"), isolatedPath(destination, true), ...args,
+      );
+    }
+    if (name === "openSync") {
+      return (file, flags, ...args) => {
+        const descriptor = target.openSync(isolatedPath(file, flags !== "r" && flags !== 0), flags, ...args);
+        descriptors.add(descriptor);
+        return descriptor;
+      };
+    }
+    if (name === "closeSync" || name === "fstatSync") {
+      return descriptor => {
+        if (!descriptors.has(descriptor)) return forbidden(`fs.${name} descriptor`);
+        if (name === "closeSync") descriptors.delete(descriptor);
+        return target[name](descriptor);
+      };
+    }
+    return () => forbidden(`fs.${String(name)}`);
   },
 });
 Module._load = function (request, parent, isMain) {
@@ -108,6 +151,7 @@ Module._load = function (request, parent, isMain) {
   }
   const resolved = Module._resolveFilename(request, parent);
   if (!resolved.startsWith(runtime + path.sep) ||
+      resolved.endsWith(".test.cjs") ||
       !(resolved.endsWith(".cjs") || resolved.endsWith(".json"))) {
     return forbidden(`module ${request}`);
   }

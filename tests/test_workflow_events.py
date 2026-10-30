@@ -112,7 +112,7 @@ class WorkflowEventFixture:
             for name in ("intake", "build-cloud")
         }
 
-    def gate(self, name):
+    def gate(self, name, membership_output=None):
         fixture = self.fixture
         context = fixture["context"]
         values = {
@@ -136,7 +136,17 @@ class WorkflowEventFixture:
                 condition(block(self.locks[name], "pre_activation", 2)), values
             )
         )
-        values["needs.pre_activation.outputs.activated"] = "true"
+        if membership_output is None:
+            return permitted
+        pre_activation = block(self.locks[name], "pre_activation", 2)
+        self.assertIn("        id: check_membership\n", pre_activation)
+        outputs = re.findall(r"^      activated: \$\{\{ (.+) }}$", pre_activation, re.MULTILINE)
+        if len(outputs) != 1:
+            raise ValueError("Unsupported compiled membership output")
+        activated = evaluate_gate(outputs[0], {
+            "steps.check_membership.outputs.is_team_member": membership_output,
+        })
+        values["needs.pre_activation.outputs.activated"] = str(activated).lower()
         return permitted and evaluate_gate(
             condition(block(self.locks[name], "activation", 2)), values
         )
@@ -254,6 +264,17 @@ class CompiledEventFixtures(WorkflowEventFixture, unittest.TestCase):
                 with self.subTest(workflow=name, job=job):
                     self.assertEqual(needs(block(lock, job, 2)), dependencies)
 
+    def test_disconnected_compiled_membership_output_is_not_proven(self):
+        for name in self.locks:
+            with self.subTest(workflow=name):
+                self.assertFalse(self.gate(name, membership_output="false"))
+                self.locks[name] = self.locks[name].replace(
+                    "activated: ${{ steps.check_membership.outputs.is_team_member == 'true' }}",
+                    "activated: ${{ 'true' }}",
+                )
+                with self.assertRaisesRegex(ValueError, "Unsupported"):
+                    self.gate(name, membership_output="false")
+
     def test_approval_evidence_failures_do_not_emit_approval(self):
         issue = "repos/owner/acme/issues/42"
         pull = "repos/owner/acme/pulls/44"
@@ -311,6 +332,49 @@ class PinnedWorkflowEventProof(WorkflowEventFixture, unittest.TestCase):
             raise RuntimeError("BLOCKER: runtime differs from the pinned action")
         if not shutil.which("node"):
             raise RuntimeError("BLOCKER: node is required")
+
+    def test_filesystem_paths_cannot_escape_the_fixture(self):
+        with tempfile.TemporaryDirectory() as directory:
+            directory = Path(directory)
+            workspace = directory / "workspace"
+            workspace.mkdir()
+            source = workspace / "source"
+            source.write_text("source")
+            outside = directory / "outside"
+            outside.write_text("unchanged")
+            (workspace / "link").symlink_to(outside)
+            # Use a fake runtime so destructive-flag tests cannot change the pinned checkout.
+            runtime = directory / "runtime"
+            runtime.mkdir()
+            runtime_file = runtime / "fixture.cjs"
+            runtime_file.write_text("pinned")
+            scripts = (
+                f"require('fs').writeFileSync({json.dumps(str(outside))}, 'changed')",
+                f"require('fs').copyFileSync('source', {json.dumps(str(outside))})",
+                f"require('fs').renameSync('source', {json.dumps(str(outside))})",
+                "require('fs').writeFileSync('link', 'changed')",
+                "require('fs').readFileSync(" + json.dumps(
+                    "/tmp/gh-aw/" + "../" * 20 + str(outside).removeprefix("/")
+                ) + ")",
+                f"require('fs').writeFileSync({json.dumps(str(runtime_file))}, 'changed')",
+                f"require('fs').readFileSync({json.dumps(str(runtime_file))}, {{flag: 'w+'}})",
+                f"require('fs').createReadStream({json.dumps(str(runtime_file))}, {{flags: 'w'}})",
+            )
+            for script in scripts:
+                with self.subTest(script=script):
+                    source.write_text("source")
+                    outside.write_text("unchanged")
+                    result = subprocess.run(
+                        ["node", str(ROOT / "tests/workflow_events.cjs"), str(runtime)],
+                        input=json.dumps({"scripts": [script]}), cwd=workspace,
+                        env={"PATH": os.environ["PATH"]}, text=True,
+                        capture_output=True, timeout=30,
+                    )
+                    self.assertNotEqual(result.returncode, 0)
+                    self.assertIn("Unsupported offline path", result.stderr)
+                    self.assertEqual(outside.read_text(), "unchanged")
+                    self.assertEqual(source.read_text(), "source")
+                    self.assertEqual(runtime_file.read_text(), "pinned")
 
     def execute(self, name, messages, issue=None, permission=None, api_error=None):
         if not self.gate(name):
@@ -391,7 +455,7 @@ class PinnedWorkflowEventProof(WorkflowEventFixture, unittest.TestCase):
                 return captured
 
             guard = run(scripts)
-            if guard["outputs"].get("is_team_member") != "true":
+            if not self.gate(name, membership_output=guard["outputs"].get("is_team_member", "")):
                 return guard
             if name == "build-cloud":
                 if not self.check_approval(directory):
