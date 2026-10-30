@@ -878,6 +878,56 @@ fn validator_rejects_all_stale_edited_and_extra_inputs() {
 
 #[cfg(unix)]
 #[test]
+fn compilation_uses_an_isolated_git_root() {
+    let workspace = Workspace::new();
+    let output = compile_fixture(
+        &workspace,
+        "review",
+        "test -f .git || exit 91\n\
+         test \"$(git rev-parse --show-toplevel)\" = \"$PWD\" || exit 92\n\
+         test \"$(git symbolic-ref --short HEAD)\" = 'acme' || exit 93\n\
+         test -z \"$(git remote)\" || exit 94",
+    );
+    succeeds(&output);
+    assert!(!workspace.0.join(".git").exists());
+    let review = workspace.0.join("review");
+    let validated = validate_compiled_inputs(&workspace.config(), &workspace.0, &review).unwrap();
+    assert_eq!(validated.outputs.len(), 5);
+    assert!(!review.join(".git").exists());
+}
+
+#[cfg(unix)]
+#[test]
+fn git_initialization_failures_never_publish_or_mutate_checkout() {
+    let workspace = Workspace::new();
+    succeeds(&compile_fixture(&workspace, "seed", ""));
+    let bin = workspace.0.join("bin");
+    fs::remove_file(bin.join("git")).unwrap();
+    for failed in [false, true] {
+        if failed {
+            executable(
+                &bin.join("git"),
+                "#!/bin/sh\nprintf 'git initialization blocked\\n'\nexit 23\n",
+            );
+        }
+        let before = snapshot(&workspace.0);
+        let result = run_cli(&workspace, "output", &bin);
+        assert!(!result.status.success());
+        let diagnostic = String::from_utf8_lossy(&result.stderr);
+        assert!(diagnostic.contains("git"), "{diagnostic}");
+        if failed {
+            assert!(
+                diagnostic.contains("git initialization blocked"),
+                "{diagnostic}"
+            );
+        }
+        assert_eq!(snapshot(&workspace.0), before);
+        assert!(!workspace.0.join("output").join(RECORD).exists());
+    }
+}
+
+#[cfg(unix)]
+#[test]
 fn failures_never_publish_a_record_and_do_not_mutate_checkout() {
     for behavior in [
         "exit 12",
@@ -930,11 +980,18 @@ fn missing_wrong_or_failed_tools_are_explicit_and_never_publish() {
     }
     executable(
         &bin.join("actionlint"),
-        "#!/bin/sh\ncase \"$1\" in -version) printf 'v1.7.12\\n'; exit 0;; esac\nexit 19\n",
+        "#!/bin/sh\ncase \"$1\" in -version) printf 'v1.7.12\\n'; exit 0;; esac\nprintf 'invalid workflow expression\\n'\nprintf 'validator context\\n' >&2\nexit 19\n",
     );
     let result = run_cli(&workspace, "output", &bin);
     assert!(!result.status.success());
-    assert!(String::from_utf8_lossy(&result.stderr).contains("actionlint failed"));
+    let diagnostic = String::from_utf8_lossy(&result.stderr);
+    for expected in [
+        "actionlint failed",
+        "invalid workflow expression",
+        "validator context",
+    ] {
+        assert!(diagnostic.contains(expected), "{diagnostic}");
+    }
     assert!(!workspace.0.join("output").join(RECORD).exists());
     // The validator needs neither compiler nor actionlint.
     fs::remove_dir_all(bin).unwrap();

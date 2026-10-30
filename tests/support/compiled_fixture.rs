@@ -79,6 +79,13 @@ pub fn compile_fixture(
     behavior: &str,
 ) -> Output {
     fs::create_dir_all(bin).unwrap();
+    if !bin.join("git").exists() {
+        let git = std::env::split_paths(&std::env::var_os("PATH").unwrap_or_default())
+            .map(|path| path.join("git"))
+            .find(|path| path.is_file())
+            .unwrap();
+        std::os::unix::fs::symlink(std::path::absolute(git).unwrap(), bin.join("git")).unwrap();
+    }
     let config = FactoryConfig::load(repository.join(config_path)).unwrap();
     let mut arguments =
         "compile --no-check-update --strict --action-mode action --action-tag v0.93.5".to_owned();
