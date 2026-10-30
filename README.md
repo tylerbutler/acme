@@ -13,6 +13,12 @@ validated module inventory paths in the current repository. `init` prepares a
 local change set from approved config for a supported Rust CLI project.
 Automatic dispatch is paused.
 
+**Planned project support:** built-in presets for Rust CLI, Rust library,
+TypeScript library, Gleam library and Astro website projects. After M5,
+expansion starts with Rust library and TypeScript library, before the deferred
+M6–M8 work. Public plugins are deferred. Only Rust CLI is supported today;
+see the [preset expansion plan](docs/specs/0013-builtin-factory-presets.md).
+
 ## Development
 
 ```sh
@@ -263,9 +269,9 @@ planning, dependency checks, authored prerequisites and version checks described
 above. The output must be a new or empty directory. Compilation does not change
 checkout files or `factory/managed-files.json`. It does not install tools, fetch
 imports, run configured commands, run workflow jobs or require credentials.
-Install gh-aw `v0.93.5` and native `actionlint` version `1.7.12` or later. Acme
-finds `gh-aw` on `PATH` or in the standard gh extension directory. It does not
-invoke `gh aw` to discover or install a missing extension.
+Install gh-aw `v0.93.5`, native `actionlint` version `1.7.12` or later, and
+Git `2.28` or later. Acme finds `gh-aw` on `PATH` or in the standard gh extension
+directory. It does not invoke `gh aw` to discover or install a missing extension.
 
 The review directory contains enabled agent-module Markdown, compiled locks,
 the required approval helper, and `compiled-workflows.json`. Disabled modules
@@ -296,6 +302,19 @@ Acme fixes the compiler options to `--no-check-update --strict --action-mode act
 --action-tag v0.93.5` and supplies bundled action pins. It runs local actionlint
 separately with `-shellcheck= -pyflakes=`. It does not use gh-aw's `--validate`
 or scanner-installation paths.
+
+Acme adds two scoped compatibility patterns for actionlint's missing support
+for generated `concurrency.queue` and `job.workflow_ref`. The pinned
+[gh-aw compiler also handles these known gaps](https://github.com/github/gh-aw/blob/v0.93.5/pkg/cli/lint_command.go#L19-L37).
+Other unknown concurrency keys, job properties and `workflow_ref` properties in
+other contexts still fail validation. The record binds these validator options;
+they are not caller-configurable. Failed tools report both stdout and stderr.
+
+For enabled workflows, compilation initializes an empty private Git repository
+with templates disabled and a fixed initial branch. Git metadata stays outside
+the review directory. This lets gh-aw reconcile failure-issue expiry exactly as
+it does in the reviewed checkout. No commits, remotes or hooks are configured,
+and ambient Git configuration is not inherited.
 
 The reusable library API
 `acme::render::validate_compiled_inputs(&config, repository_root, review_directory)`

@@ -220,3 +220,78 @@ fn pinned_compiler_preserves_model_roles_and_repeatable_review_bytes() {
         );
     }
 }
+
+#[test]
+#[ignore = "requires installed gh-aw v0.93.5 and actionlint; run just prove-compilation"]
+fn pinned_validator_compatibility_preserves_unrelated_errors() {
+    let repository = Workspace::new();
+    let mut config = FactoryConfig::from_toml(include_str!("../factory/factory.toml")).unwrap();
+    env!("CARGO_PKG_VERSION").clone_into(&mut config.toolchain.acme.target_version);
+    let review = repository.0.join("review");
+    compile_agent_workflows(&config, &repository.0, &review).unwrap();
+    let record: serde_json::Value =
+        serde_json::from_slice(&fs::read(review.join("compiled-workflows.json")).unwrap()).unwrap();
+    let options: Vec<_> = record["validator_options"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|option| option.as_str().unwrap())
+        .collect();
+    let workflow = repository.0.join("validation.yml");
+    for (queue_key, expression, expected_error) in [
+        ("queue", "job.workflow_ref", None),
+        (
+            "queuee",
+            "job.workflow_ref",
+            Some("unexpected key \"queuee\""),
+        ),
+        (
+            "queue",
+            "job.workflow_reff",
+            Some("property \"workflow_reff\" is not defined"),
+        ),
+        (
+            "queue",
+            "runner.workflow_ref",
+            Some("property \"workflow_ref\" is not defined"),
+        ),
+    ] {
+        fs::write(
+            &workflow,
+            format!(
+                "name: Validation
+on: push
+concurrency:
+  group: validation
+  {queue_key}: max
+jobs:
+  example:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo ok
+        env:
+          WORKFLOW: ${{{{ {expression} }}}}
+",
+            ),
+        )
+        .unwrap();
+        let output = Command::new("actionlint")
+            .args(&options)
+            .arg(&workflow)
+            .output()
+            .unwrap();
+        let diagnostic = format!(
+            "{}{}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert_eq!(
+            output.status.success(),
+            expected_error.is_none(),
+            "{diagnostic}"
+        );
+        if let Some(expected) = expected_error {
+            assert!(diagnostic.contains(expected), "{diagnostic}");
+        }
+    }
+}

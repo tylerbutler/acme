@@ -4,6 +4,18 @@ All notable changes to this project will be documented in this file.
 
 ## [unreleased]
 
+### Bug Fixes
+
+- Prepare version 0.4.0 with scoped actionlint compatibility for valid generated
+  `concurrency.queue` and `job.workflow_ref` syntax, while preserving unrelated
+  lint failures.
+- Include stdout and stderr diagnostics when compilation or validation fails.
+- Initialize an isolated Git repository for workflow compilation so generated
+  failure-issue expiry matches the reviewed locks. Enabled workflow compilation
+  now requires Git 2.28 or later.
+
+## [0.3.0] - 2026-10-30
+
 ### Features
 
 - Prepare version 0.3.0 with deterministic Intake and Build-cloud source plans,
