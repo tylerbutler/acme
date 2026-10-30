@@ -16,7 +16,7 @@ struct Workspace(PathBuf);
 impl Workspace {
     fn new() -> Self {
         static NEXT: AtomicU64 = AtomicU64::new(0);
-        let path = std::env::temp_dir().join(format!(
+        let path = std::env::temp_dir().canonicalize().unwrap().join(format!(
             "acme-sync-{}-{}",
             std::process::id(),
             NEXT.fetch_add(1, Ordering::Relaxed)
