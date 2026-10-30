@@ -179,7 +179,7 @@ Build-cloud also needs a valid authored `commit-types.json`; its helper requires
 
 The plan declares exact source, helper and future lock ownership, but contains no
 compiler-output bytes. It does not extend CLI render/sync, doctor or activation.
-Compiler-backed verification belongs to the later compilation child issue.
+The separate compilation command supplies compiler-output bytes for review.
 
 Both `engines.intake` and `engines.build_cloud` accept optional `controller_model`
 and `detection_model` fields. The existing `engines.build_cloud.model` selects only
@@ -188,7 +188,70 @@ digits, dots, underscores or hyphens, starting with a letter or digit. Expressio
 are rejected; there is no model allowlist or availability check. Omission preserves
 the reviewed source bytes. A controller-only override adds the trusted detection
 selection expression so the controller cannot become the detection default.
-Tests establish source behavior, not serving-model identity or compiled behavior.
+Source tests establish rendering behavior, not serving-model identity.
+
+### Agent workflow compilation
+
+```sh
+acme compile --output /tmp/acme-agent-review
+acme compile --config path/to/factory.toml --output /tmp/acme-agent-review
+```
+
+Compilation reads `factory/factory.toml` by default. It uses the same source
+planning, dependency checks, authored prerequisites and version checks described
+above. The output must be a new or empty directory. Compilation does not change
+checkout files or `factory/managed-files.json`. It does not install tools, fetch
+imports, run configured commands, run workflow jobs or require credentials.
+Install gh-aw `v0.93.5` and native `actionlint` version `1.7.12` or later. Acme
+finds `gh-aw` on `PATH` or in the standard gh extension directory. It does not
+invoke `gh aw` to discover or install a missing extension.
+
+The review directory contains enabled agent-module Markdown, compiled locks,
+the required approval helper, and `compiled-workflows.json`. Disabled modules
+have no output. The record is written last, after successful compilation and
+validation. A failed operation does not publish a completed record. Use a fresh
+output directory to retry if an I/O failure leaves partial files.
+Do not compile or validate with concurrent filesystem writers.
+
+`compiled-workflows.json` uses format version `1`. It records:
+
+- `acme_version` and `compiler_version`;
+- `config_sha256`, the SHA-256 hash of the typed config serialized as
+  two-space-indented JSON with one trailing newline;
+- `assets`, a sorted map of bundled source, template and manifest hashes,
+  including M2 capability providers;
+- `compiler_options`, `validator_options` and `action_cache_sha256`;
+- `outputs`, sorted by relative path, with each output's `module`, `path` and
+  `sha256`.
+
+The JSON record has no timestamps, absolute host paths or credential values.
+Config formatting does not affect its hash. Changes to approved config values,
+bundled assets, compiler options or output bytes invalidate the record.
+Compilation uses an isolated workspace and a cleared process environment, with
+only fixed settings and the local tool search path restored. Ambient model,
+compiler, Git and credential settings do not select generated workflow behavior.
+The temporary directory must be outside Git checkouts and the review directory.
+Acme fixes the compiler options to `--no-check-update --strict --action-mode action
+--action-tag v0.93.5` and supplies bundled action pins. It runs local actionlint
+separately with `-shellcheck= -pyflakes=`. It does not use gh-aw's `--validate`
+or scanner-installation paths.
+
+The reusable library API
+`acme::render::validate_compiled_inputs(&config, repository_root, review_directory)`
+recomputes expected sources and validates the record, versions, exact inventory,
+paths and file hashes before returning output bytes. It does not run the compiler
+or write files. It rejects missing, stale, edited, extra or incompatible inputs,
+symlinks and non-regular files. Plain hashes detect mismatches; they do not
+authenticate a compiler or an untrusted review directory.
+
+Normal render and sync retain their M2-only behavior in this implementation.
+They do not consume review directories or compile agent workflows. Compilation
+does not authorize publication, activation, assignment or paid tests.
+
+Run `just prove-compilation` with the required local tools to check pinned-compiler
+repeatability and model-role separation, including detection fallback. This proof
+compiles in temporary directories without running workflow jobs. Normal
+`just check` compiles this test but does not run its tool-dependent proof.
 
 ### Agent comment style
 

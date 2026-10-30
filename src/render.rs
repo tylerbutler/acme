@@ -3,10 +3,15 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
 
 mod agent_sources;
+mod compiled;
 mod init;
 mod output;
 mod sync;
 pub use agent_sources::{AgentSourceOutput, AgentSourcePlan, build_agent_source_plan};
+pub use compiled::{
+    CompileError, CompiledAgentOutput, ValidatedCompiledInputs, compile_agent_workflows,
+    validate_compiled_inputs,
+};
 pub use output::{RenderError, render_to_directory};
 pub use sync::{SyncError, SyncReport, init_repository, sync_repository};
 

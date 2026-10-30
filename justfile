@@ -57,6 +57,10 @@ workflows:
 prove-assignment:
     ACME_ASSIGNMENT_PROOF=1 python3 -m unittest discover -s tests -p test_assignment_handoff.py -v
 
+# Requires installed gh-aw v0.93.5 and actionlint; does not run workflow jobs.
+prove-compilation:
+    cargo test --locked --test compiled_compiler -- --ignored
+
 # Applies the hand-built GitHub settings; never enables an agent.
 bootstrap-github:
     python3 scripts/bootstrap-github.py

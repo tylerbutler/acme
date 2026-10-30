@@ -27,7 +27,17 @@
       "$ref": "#/definitions/BudgetConfig"
     },
     "coordinator": {
-      "$ref": "#/definitions/CoordinatorConfig"
+      "default": {
+        "automatic_dispatch": false,
+        "max_active_tasks": 0,
+        "max_assignments_per_reconciliation": 0,
+        "max_attempts": 0
+      },
+      "allOf": [
+        {
+          "$ref": "#/definitions/CoordinatorConfig"
+        }
+      ]
     },
     "engines": {
       "$ref": "#/definitions/EnginesConfig"

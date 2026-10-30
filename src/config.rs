@@ -1,12 +1,12 @@
 use schemars::JsonSchema;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::error::Error;
 use std::fmt;
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
 
-#[derive(Debug, Eq, PartialEq)]
+#[derive(Debug, Eq, PartialEq, Serialize)]
 pub struct FactoryConfig {
     pub schema_version: u32,
     pub repository: String,
@@ -95,7 +95,7 @@ impl FactoryConfig {
     }
 }
 
-#[derive(Clone, Debug, Default, Deserialize, Eq, JsonSchema, PartialEq)]
+#[derive(Clone, Debug, Default, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct CoordinatorConfig {
     #[serde(default)]
@@ -147,27 +147,27 @@ impl Error for ConfigError {
     }
 }
 
-#[derive(Debug, Deserialize, Eq, JsonSchema, PartialEq)]
+#[derive(Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct ToolchainConfig {
     pub acme: AcmeToolchainConfig,
     pub gh_aw: GhAwToolchainConfig,
 }
 
-#[derive(Debug, Deserialize, Eq, JsonSchema, PartialEq)]
+#[derive(Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct AcmeToolchainConfig {
     pub bootstrap: bool,
     pub target_version: String,
 }
 
-#[derive(Debug, Deserialize, Eq, JsonSchema, PartialEq)]
+#[derive(Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct GhAwToolchainConfig {
     pub version: String,
 }
 
-#[derive(Debug, Deserialize, Eq, JsonSchema, PartialEq)]
+#[derive(Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct BudgetConfig {
     pub enforce_monthly: bool,
@@ -176,7 +176,7 @@ pub struct BudgetConfig {
     pub reason: String,
 }
 
-#[derive(Debug, Deserialize, Eq, JsonSchema, PartialEq)]
+#[derive(Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct EnginesConfig {
     pub intake: EngineConfig,
@@ -184,7 +184,7 @@ pub struct EnginesConfig {
     pub review: ReviewEngineConfig,
 }
 
-#[derive(Debug, Deserialize, Eq, JsonSchema, PartialEq)]
+#[derive(Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct EngineConfig {
     pub engine: String,
@@ -193,7 +193,7 @@ pub struct EngineConfig {
     pub detection_model: Option<ModelId>,
 }
 
-#[derive(Debug, Deserialize, Eq, JsonSchema, PartialEq)]
+#[derive(Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct BuildCloudEngineConfig {
     pub engine: String,
@@ -204,7 +204,7 @@ pub struct BuildCloudEngineConfig {
 }
 
 /// A literal model identifier, never a workflow expression or YAML fragment.
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq)]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(try_from = "String")]
 pub struct ModelId(String);
 
@@ -253,7 +253,7 @@ impl TryFrom<String> for ModelId {
     }
 }
 
-#[derive(Debug, Deserialize, Eq, JsonSchema, PartialEq)]
+#[derive(Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct ReviewEngineConfig {
     pub engine: String,
@@ -261,7 +261,7 @@ pub struct ReviewEngineConfig {
     pub model_policy: String,
 }
 
-#[derive(Debug, Deserialize, Eq, JsonSchema, PartialEq)]
+#[derive(Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct ModulesConfig {
     pub intake: IntakeModuleConfig,
@@ -276,7 +276,7 @@ pub struct ModulesConfig {
     pub ops: DisabledModuleConfig,
 }
 
-#[derive(Debug, Deserialize, Eq, JsonSchema, PartialEq)]
+#[derive(Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct IntakeModuleConfig {
     pub enabled: bool,
@@ -288,7 +288,7 @@ pub struct IntakeModuleConfig {
     pub provides: Vec<String>,
 }
 
-#[derive(Debug, Deserialize, Eq, JsonSchema, PartialEq)]
+#[derive(Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct SpecModuleConfig {
     pub enabled: bool,
@@ -298,7 +298,7 @@ pub struct SpecModuleConfig {
     pub provides: Vec<String>,
 }
 
-#[derive(Debug, Deserialize, Eq, JsonSchema, PartialEq)]
+#[derive(Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 #[allow(clippy::struct_excessive_bools)]
 pub struct BuildCloudModuleConfig {
@@ -317,7 +317,7 @@ pub struct BuildCloudModuleConfig {
     pub provides: Vec<String>,
 }
 
-#[derive(Debug, Deserialize, Eq, JsonSchema, PartialEq)]
+#[derive(Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct CiModuleConfig {
     pub enabled: bool,
@@ -328,7 +328,7 @@ pub struct CiModuleConfig {
     pub provides: Vec<String>,
 }
 
-#[derive(Debug, Deserialize, Eq, JsonSchema, PartialEq)]
+#[derive(Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct MergeModuleConfig {
     pub enabled: bool,
@@ -341,13 +341,13 @@ pub struct MergeModuleConfig {
     pub provides: Vec<String>,
 }
 
-#[derive(Debug, Deserialize, Eq, JsonSchema, PartialEq)]
+#[derive(Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct DisabledModuleConfig {
     pub enabled: bool,
 }
 
-#[derive(Debug, Deserialize, Eq, JsonSchema, PartialEq)]
+#[derive(Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct RiskConfig {
     #[serde(rename = "default")]
@@ -358,7 +358,7 @@ pub struct RiskConfig {
     pub path_gate_enforced: bool,
 }
 
-#[derive(Debug, Deserialize, Eq, JsonSchema, PartialEq)]
+#[derive(Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct BootstrapConfig {
     pub milestone: String,
