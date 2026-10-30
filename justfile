@@ -57,6 +57,10 @@ workflows:
 prove-assignment:
     ACME_ASSIGNMENT_PROOF=1 python3 -m unittest discover -s tests -p test_assignment_handoff.py -v
 
+# Requires the reviewed pinned action runtime; does not run inference or remote writes.
+prove-event-gates:
+    ACME_EVENT_GATE_PROOF=1 python3 -m unittest discover -s tests -p test_workflow_events.py -v
+
 # Requires installed gh-aw v0.93.5 and actionlint; does not run workflow jobs.
 prove-compilation:
     cargo test --locked --test compiled_compiler -- --ignored
