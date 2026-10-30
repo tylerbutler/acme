@@ -4,13 +4,56 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 use std::sync::atomic::{AtomicU64, Ordering};
 
+#[path = "support/compiled_fixture.rs"]
+pub mod compiled_fixture;
+
 const FACTORY: &str = include_str!("../factory/factory.toml");
 const CI: &str = ".github/workflows/ci.yml";
 const RULESET: &str = ".github/rulesets/main.json";
 const GOLDENS: &[(&str, &[u8])] = &[
     (
+        ".github/ISSUE_TEMPLATE/bug.yml",
+        include_bytes!("../.github/ISSUE_TEMPLATE/bug.yml"),
+    ),
+    (
+        ".github/ISSUE_TEMPLATE/config.yml",
+        include_bytes!("../.github/ISSUE_TEMPLATE/config.yml"),
+    ),
+    (
+        ".github/ISSUE_TEMPLATE/idea.yml",
+        include_bytes!("../.github/ISSUE_TEMPLATE/idea.yml"),
+    ),
+    (
+        ".github/ISSUE_TEMPLATE/spec-request.yml",
+        include_bytes!("../.github/ISSUE_TEMPLATE/spec-request.yml"),
+    ),
+    (
         ".github/actions/setup-rust/action.yml",
         include_bytes!("../.github/actions/setup-rust/action.yml"),
+    ),
+    (
+        ".github/labels.yml",
+        include_bytes!("../.github/labels.yml"),
+    ),
+    (
+        ".github/workflows/intake.md",
+        include_bytes!("../.github/workflows/intake.md"),
+    ),
+    (
+        ".github/workflows/intake.lock.yml",
+        include_bytes!("../.github/workflows/intake.lock.yml"),
+    ),
+    (
+        ".github/workflows/build-cloud.md",
+        include_bytes!("../.github/workflows/build-cloud.md"),
+    ),
+    (
+        ".github/workflows/build-cloud.lock.yml",
+        include_bytes!("../.github/workflows/build-cloud.lock.yml"),
+    ),
+    (
+        "scripts/check-build-approval.py",
+        include_bytes!("../scripts/check-build-approval.py"),
     ),
     (RULESET, include_bytes!("../.github/rulesets/main.json")),
     (CI, include_bytes!("../.github/workflows/ci.yml")),
@@ -19,13 +62,10 @@ const GOLDENS: &[(&str, &[u8])] = &[
 fn config() -> toml::Value {
     let mut config: toml::Value = toml::from_str(FACTORY).unwrap();
     config["toolchain"]["acme"]["target_version"] = env!("CARGO_PKG_VERSION").into();
-    for module in ["intake", "spec", "build_cloud"] {
-        config["modules"][module]["enabled"] = false.into();
-    }
     config
 }
 
-struct Workspace(PathBuf);
+struct Workspace(PathBuf, compiled_fixture::ReviewFixture);
 
 impl Workspace {
     fn new() -> Self {
@@ -36,23 +76,33 @@ impl Workspace {
             NEXT.fetch_add(1, Ordering::Relaxed)
         ));
         fs::create_dir(&path).unwrap();
+        fs::write(path.join("AGENTS.md"), "Human-owned instructions.\n").unwrap();
+        fs::write(
+            path.join("commit-types.json"),
+            include_bytes!("../commit-types.json"),
+        )
+        .unwrap();
         fs::create_dir(path.join("factory")).unwrap();
         fs::write(
             path.join("factory/factory.toml"),
             toml::to_string(&config()).unwrap(),
         )
         .unwrap();
-        Self(path)
+        Self(path, compiled_fixture::ReviewFixture::new())
     }
 
     fn render(&self, destination: &Path) -> Output {
-        Command::new(env!("CARGO_BIN_EXE_acme"))
+        let review = self.1.refresh(&self.0, Path::new("factory/factory.toml"));
+        let mut command = Command::new(env!("CARGO_BIN_EXE_acme"));
+        command
             .current_dir(&self.0)
             .args(["render", "--output"])
             .arg(destination)
-            .env("PATH", self.0.join("no-programs"))
-            .output()
-            .unwrap()
+            .env("PATH", self.0.join("no-programs"));
+        if let Some(review) = review {
+            command.arg("--compiled-inputs").arg(review);
+        }
+        command.output().unwrap()
     }
 
     fn changed(&self, change: impl FnOnce(&mut toml::Value)) -> BTreeMap<String, Vec<u8>> {
@@ -126,7 +176,7 @@ fn golden(path: &str) -> String {
 }
 
 #[test]
-fn m2_factory_matches_every_golden_byte_and_repeats_identically() {
+fn unchanged_factory_matches_every_golden_byte_and_repeats_identically() {
     let workspace = Workspace::new();
     let first = workspace.0.join("first");
     let second = workspace.0.join("nested/second");
@@ -279,17 +329,33 @@ fn disabled_modules_remove_only_their_inventory() {
     for (disabled, removed) in [
         ("ci", vec![CI, ".github/actions/setup-rust/action.yml"]),
         ("merge", vec![RULESET]),
+        (
+            "intake",
+            vec![
+                ".github/labels.yml",
+                ".github/ISSUE_TEMPLATE/bug.yml",
+                ".github/ISSUE_TEMPLATE/config.yml",
+                ".github/ISSUE_TEMPLATE/idea.yml",
+                ".github/ISSUE_TEMPLATE/spec-request.yml",
+                ".github/workflows/intake.md",
+                ".github/workflows/intake.lock.yml",
+                ".github/workflows/build-cloud.md",
+                ".github/workflows/build-cloud.lock.yml",
+                "scripts/check-build-approval.py",
+            ],
+        ),
     ] {
         let workspace = Workspace::new();
         let actual = workspace.changed(|config| {
             config["modules"][disabled]["enabled"] = false.into();
             if disabled == "ci" {
-                config["modules"]["spec"]["enabled"] = true.into();
-                config["modules"]["spec"]["needs"] = toml::Value::Array(vec![]);
                 config["modules"]["spec"]["provides"]
                     .as_array_mut()
                     .unwrap()
                     .push("ci".into());
+            } else if disabled == "intake" {
+                config["modules"]["spec"]["enabled"] = false.into();
+                config["modules"]["build_cloud"]["enabled"] = false.into();
             }
         });
         let mut expected = golden_tree();
@@ -306,8 +372,6 @@ fn external_ci_supports_multiple_json_escaped_required_checks() {
     let checks = ["Check \"one\"", "Check\\two\nthree"];
     let actual = workspace.changed(|config| {
         config["modules"]["ci"]["enabled"] = false.into();
-        config["modules"]["spec"]["enabled"] = true.into();
-        config["modules"]["spec"]["needs"] = toml::Value::Array(vec![]);
         config["modules"]["spec"]["provides"]
             .as_array_mut()
             .unwrap()
@@ -443,7 +507,10 @@ fn invalid_config_or_plan_fails_before_creating_the_destination() {
     for config in [
         "schema_version = [".to_owned(),
         fixture.replace("profile = \"cli\"", "profile = \"web\""),
-        fixture.replace("needs = [\"ci\"]", "needs = [\"missing\"]"),
+        fixture.replace(
+            "needs = [\"approved-spec\", \"ci\"]",
+            "needs = [\"missing\"]",
+        ),
     ] {
         fs::write(workspace.0.join("factory/factory.toml"), config).unwrap();
         let destination = workspace.0.join("not-created/output");
@@ -486,9 +553,15 @@ fn copied_binary_renders_with_explicit_config_without_checkout_or_tools() {
     )
     .unwrap();
     fs::remove_dir(workspace.0.join("factory")).unwrap();
+    let review = workspace
+        .1
+        .refresh(&workspace.0, Path::new("approved.toml"))
+        .unwrap();
     let output = Command::new(binary)
         .current_dir(&workspace.0)
         .args(["render", "--config", "approved.toml", "--output", "output"])
+        .arg("--compiled-inputs")
+        .arg(review)
         .env("PATH", workspace.0.join("no-programs"))
         .output()
         .unwrap();

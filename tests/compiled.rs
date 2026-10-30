@@ -8,6 +8,9 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicU64, Ordering};
 
+#[path = "support/compiled_fixture.rs"]
+pub mod compiled_fixture;
+
 const RECORD: &str = "compiled-workflows.json";
 const OWNERSHIP: &str = "factory/managed-files.json";
 
@@ -34,33 +37,7 @@ fn full_public_apis_require_compiled_inputs_for_enabled_agents() {
 #[cfg(unix)]
 fn reviewed_inputs(workspace: &Workspace) -> PathBuf {
     assert!(compile_fixture(workspace, "review", "").status.success());
-    let review = workspace.0.join("review");
-    let record_path = review.join(RECORD);
-    let mut record: Value = serde_json::from_slice(&fs::read(&record_path).unwrap()).unwrap();
-    for (path, bytes) in [
-        (
-            ".github/workflows/intake.lock.yml",
-            include_bytes!("../.github/workflows/intake.lock.yml").as_slice(),
-        ),
-        (
-            ".github/workflows/build-cloud.lock.yml",
-            include_bytes!("../.github/workflows/build-cloud.lock.yml").as_slice(),
-        ),
-    ] {
-        if !review.join(path).exists() {
-            continue;
-        }
-        fs::write(review.join(path), bytes).unwrap();
-        let entry = record["outputs"]
-            .as_array_mut()
-            .unwrap()
-            .iter_mut()
-            .find(|entry| entry["path"] == path)
-            .unwrap();
-        entry["sha256"] = format!("{:x}", Sha256::digest(bytes)).into();
-    }
-    fs::write(record_path, serde_json::to_vec(&record).unwrap()).unwrap();
-    review
+    workspace.0.join("review")
 }
 
 fn handoff_cli(workspace: &Workspace, arguments: &[&str]) -> std::process::Output {
@@ -341,6 +318,7 @@ fn all_agent_targets_reject_conflicts_and_modified_ownership_before_any_writes()
         for check in [false, true] {
             let error = acme::render::sync_repository(&disabled, &workspace.0, check).unwrap_err();
             assert!(error.to_string().contains("modified owned file"));
+            assert!(error.to_string().contains(output.ownership.path));
             assert_eq!(snapshot(&workspace.0), before);
         }
         fs::write(target, &output.contents).unwrap();
@@ -486,6 +464,7 @@ fn module_removal_uses_only_remaining_compilation_and_preserves_authored_files()
     let mut config = workspace.config();
     config.modules.build_cloud.enabled = false;
     workspace.write_config(&config);
+    rejects_handoff(&config, &workspace, &review);
     fs::remove_dir_all(&review).unwrap();
     // The fake compiler checks that only Intake is requested.
     let review = reviewed_inputs(&workspace);
@@ -551,6 +530,61 @@ fn module_removal_uses_only_remaining_compilation_and_preserves_authored_files()
         &workspace,
         &["sync", "--config", "factory.toml", "--check"],
     ));
+}
+
+#[cfg(unix)]
+#[test]
+fn no_agents_rejects_stale_explicit_inputs_and_accepts_a_valid_empty_review() {
+    let workspace = Workspace::new();
+    let stale = reviewed_inputs(&workspace);
+    let mut config = workspace.config();
+    config.modules.intake.enabled = false;
+    config.modules.spec.enabled = false;
+    config.modules.build_cloud.enabled = false;
+    workspace.write_config(&config);
+    rejects_handoff(&config, &workspace, &stale);
+    fs::remove_file(workspace.0.join("AGENTS.md")).unwrap();
+    fs::remove_file(workspace.0.join("commit-types.json")).unwrap();
+    succeeds(&handoff_cli(
+        &workspace,
+        &["sync", "--config", "factory.toml"],
+    ));
+    // Explicit compilation of an empty plan never runs the fake compile action.
+    let result = compile_fixture(&workspace, "empty-review", "exit 123");
+    succeeds(&result);
+    let empty = workspace.0.join("empty-review");
+    assert!(
+        validate_compiled_inputs(&config, &workspace.0, &empty)
+            .unwrap()
+            .outputs
+            .is_empty()
+    );
+    fs::remove_dir_all(workspace.0.join("bin")).unwrap();
+    succeeds(&handoff_cli(
+        &workspace,
+        &[
+            "render",
+            "--config",
+            "factory.toml",
+            "--output",
+            "rendered",
+            "--compiled-inputs",
+            "empty-review",
+        ],
+    ));
+    let before = snapshot(&workspace.0);
+    succeeds(&handoff_cli(
+        &workspace,
+        &[
+            "sync",
+            "--config",
+            "factory.toml",
+            "--check",
+            "--compiled-inputs",
+            "empty-review",
+        ],
+    ));
+    assert_eq!(snapshot(&workspace.0), before);
 }
 
 #[cfg(unix)]
@@ -708,47 +742,13 @@ fn executable(path: &Path, contents: &str) {
 
 #[cfg(unix)]
 fn compile_fixture(workspace: &Workspace, output: &str, behavior: &str) -> std::process::Output {
-    let bin = workspace.0.join("bin");
-    fs::create_dir_all(&bin).unwrap();
-    let config = workspace.config();
-    let mut arguments =
-        "compile --no-check-update --strict --action-mode action --action-tag v0.93.5".to_owned();
-    if config.modules.build_cloud.enabled {
-        arguments.push_str(" .github/workflows/build-cloud.md");
-    }
-    if config.modules.intake.enabled {
-        arguments.push_str(" .github/workflows/intake.md");
-    }
-    let count = arguments.split_whitespace().count();
-    executable(
-        &bin.join("gh-aw"),
-        &format!(
-            "#!/bin/sh\n\
-             case \"$1\" in\n\
-             version) printf 'gh aw version v0.93.5\\n'; exit 0;;\n\
-             compile)\n\
-             test \"$#\" -eq {count} || exit 85\n\
-             test \"$*\" = '{arguments}' || exit 85\n\
-             test -z \"$GH_TOKEN$GITHUB_TOKEN$GH_AW_MODEL$GH_AW_ACTION_TAG\" || exit 80\n\
-             test -z \"$GH_AW_DEFAULT_DETECTION_MODEL$GHAW_POLICY_MODELS_ALLOWED$GHAW_POLICY_MODELS_BLOCKED\" || exit 84\n\
-             test \"$HOME\" != '{root}' || exit 81\n\
-             test \"$HTTPS_PROXY\" = 'http://127.0.0.1:9' || exit 82\n\
-             test -z \"$NO_PROXY\" || exit 83\n\
-             {behavior}\n\
-             for source in .github/workflows/*.md; do\n\
-               printf 'name: deterministic\\n' > \"${{source%.md}}.lock.yml\"\n\
-             done\n\
-             exit 0;;\n\
-             esac\n\
-             exit 90\n",
-            root = workspace.0.display()
-        ),
-    );
-    executable(
-        &bin.join("actionlint"),
-        "#!/bin/sh\ncase \"$1\" in -version) printf 'v1.7.12\\n';; esac\nexit 0\n",
-    );
-    run_cli(workspace, output, &bin)
+    compiled_fixture::compile_fixture(
+        &workspace.0,
+        Path::new("factory.toml"),
+        &workspace.0.join(output),
+        &workspace.0.join("bin"),
+        behavior,
+    )
 }
 
 #[cfg(unix)]

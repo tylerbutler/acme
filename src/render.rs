@@ -75,14 +75,12 @@ fn final_byte_plan(
             }));
     }
     plan.outputs.sort_by_key(|output| output.path);
-    if plan
-        .outputs
-        .windows(2)
-        .any(|pair| pair[0].path == pair[1].path)
-    {
-        return Err(RenderPlanError("duplicate final output path".to_owned()));
-    }
+    validate_byte_outputs(&plan.outputs)?;
     Ok(plan)
+}
+
+fn validate_byte_outputs(outputs: &[ByteOutput]) -> Result<(), RenderPlanError> {
+    validate_output_paths(outputs.iter().map(|output| output.path))
 }
 
 #[derive(Debug, Eq, PartialEq)]
@@ -447,13 +445,11 @@ fn template_inputs(config: &FactoryConfig, path: &str) -> TemplateInputs {
     }
 }
 
-fn validate_paths(
-    outputs: &[PlannedOutput],
-    selected_modules: &[ModuleManifest],
+fn validate_output_paths<'a>(
+    outputs: impl IntoIterator<Item = &'a str>,
 ) -> Result<(), RenderPlanError> {
     let mut paths = BTreeSet::new();
-    for output in outputs {
-        let path = output.path;
+    for path in outputs {
         if path.is_empty()
             || path
                 .bytes()
@@ -476,6 +472,14 @@ fn validate_paths(
             }
         }
     }
+    Ok(())
+}
+
+fn validate_paths(
+    outputs: &[PlannedOutput],
+    selected_modules: &[ModuleManifest],
+) -> Result<(), RenderPlanError> {
+    validate_output_paths(outputs.iter().map(|output| output.path))?;
     let mut inventory = BTreeMap::new();
     for module in builtin_modules() {
         let manifest = module
@@ -503,4 +507,60 @@ fn validate_paths(
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{ByteOutput, validate_byte_outputs};
+
+    fn union_outputs(paths: &[&'static str]) -> Vec<ByteOutput> {
+        paths
+            .iter()
+            .enumerate()
+            .map(|(index, path)| ByteOutput {
+                module: if index == 0 { "ci" } else { "intake" }.to_owned(),
+                path,
+                contents: Vec::new(),
+            })
+            .collect()
+    }
+
+    #[test]
+    fn final_union_rejects_collisions_and_file_directory_overlaps() {
+        for paths in [
+            [".github/workflows/ci.yml", ".github/workflows/ci.yml"],
+            [".GITHUB/workflows/CI.yml", ".github/workflows/ci.yml"],
+            [".github/workflows", ".github/workflows/intake.md"],
+            ["scripts", "scripts/check-build-approval.py"],
+        ] {
+            assert!(
+                validate_byte_outputs(&union_outputs(&paths)).is_err(),
+                "accepted conflicting union paths: {paths:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn final_union_rejects_unsafe_paths_but_accepts_distinct_file_prefixes() {
+        for path in [
+            "../escape",
+            "/absolute",
+            ".git/config",
+            "scripts\\helper",
+            "",
+        ] {
+            assert!(
+                validate_byte_outputs(&union_outputs(&["safe", path])).is_err(),
+                "accepted unsafe union path: {path:?}"
+            );
+        }
+        assert!(
+            validate_byte_outputs(&union_outputs(&[
+                ".github/workflows/intake.md",
+                ".github/workflows/intake.md-extra",
+                "scripts/check-build-approval.py",
+            ]))
+            .is_ok()
+        );
+    }
 }
