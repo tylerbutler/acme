@@ -26,6 +26,9 @@ fn run() -> Result<(), String> {
     if command == "render" {
         return render(args);
     }
+    if command == "compile" {
+        return compile(args);
+    }
     if command == "sync" {
         return sync(args);
     }
@@ -144,6 +147,37 @@ fn sync(mut args: impl Iterator<Item = String>) -> Result<(), String> {
     if report.is_clean() {
         println!("Sync is clean.");
     }
+    Ok(())
+}
+
+fn compile(mut args: impl Iterator<Item = String>) -> Result<(), String> {
+    let mut config_path = None;
+    let mut destination = None;
+    while let Some(argument) = args.next() {
+        let target = match argument.as_str() {
+            "--config" => &mut config_path,
+            "--output" => &mut destination,
+            _ => return Err(format!("unknown compile argument: {argument}")),
+        };
+        let path = args
+            .next()
+            .filter(|path| !path.starts_with("--") && !path.is_empty())
+            .ok_or_else(|| format!("{argument} requires a path."))?;
+        if target.replace(PathBuf::from(path)).is_some() {
+            return Err(format!("{argument} must be specified once."));
+        }
+    }
+    let destination = destination.ok_or("compile requires --output DIR.")?;
+    let config_path = config_path.unwrap_or_else(|| PathBuf::from("factory/factory.toml"));
+    let config = FactoryConfig::load(&config_path).map_err(|error| error.to_string())?;
+    let repository =
+        env::current_dir().map_err(|error| format!("failed to get current directory: {error}"))?;
+    acme::render::compile_agent_workflows(&config, &repository, &destination)
+        .map_err(|error| error.to_string())?;
+    println!(
+        "Compiled approved agent workflows to {}. No checkout synchronization or activation performed.",
+        destination.display()
+    );
     Ok(())
 }
 
