@@ -27,7 +27,15 @@ const OPTIONS: &[&str] = &[
     "--action-tag",
     COMPILER,
 ];
-const LINT_OPTIONS: &[&str] = &["-shellcheck=", "-pyflakes="];
+const LINT_OPTIONS: &[&str] = &[
+    "-shellcheck=",
+    "-pyflakes=",
+    // Limit compatibility exceptions to the pinned compiler's concurrency and job context.
+    "-ignore",
+    r#"^unexpected key "queue" for "concurrency" section\. expected one of "cancel-in-progress", "group"$"#,
+    "-ignore",
+    r#"^property "workflow_ref" is not defined in object type \{check_run_id: number; .*; status: string\}$"#,
+];
 const CACHE_PATH: &str = ".github/aw/actions-lock.json";
 // Reviewed v0.93.5 actions. Never let a user cache select or resolve these refs.
 const PINS: &[(&str, &str, &str)] = &[
@@ -106,7 +114,7 @@ struct RecordedOutput {
 
 /// Compile bundled sources without running repository commands or accessing credentials.
 ///
-/// The compiler and actionlint must already be installed. The destination must be
+/// The compiler, actionlint, and Git must already be installed. The destination must be
 /// new or empty. I/O failures may leave incomplete output, never a completed record.
 /// As with sync, callers must exclude concurrent filesystem writers.
 pub fn compile_agent_workflows(
@@ -142,6 +150,11 @@ pub fn compile_agent_workflows(
             "compile requires native actionlint >=1.7.12 with a parseable stable version; no Docker fallback or installation is attempted",
         ));
     }
+    let git_marker = if plan.outputs.is_empty() {
+        None
+    } else {
+        Some(environment.initialize_git(&root, &workspace.0.join("git"))?)
+    };
     for output in &plan.outputs {
         write_new(&root.join(output.path), &output.contents)?;
     }
@@ -165,6 +178,9 @@ pub fn compile_agent_workflows(
     }
     let mut expected = expected_paths(&plan);
     expected.insert(CACHE_PATH.to_owned());
+    if git_marker.is_some() {
+        expected.insert(".git".to_owned());
+    }
     // gh-aw writes this infrastructure file; it is not part of module ownership.
     // Its bytes are compiler infrastructure, never handed off to a checkout.
     if root.join(".gitattributes").try_exists().map_err(io_error)? {
@@ -189,6 +205,11 @@ pub fn compile_agent_workflows(
     check_inventory(&root, &expected)?;
     if read_outputs(&plan, &root)? != outputs {
         return Err(error("validation tools mutated compiled outputs"));
+    }
+    if let Some(marker) = git_marker {
+        if read_regular(&root.join(".git"))? != marker {
+            return Err(error("compilation tools mutated the private Git marker"));
+        }
     }
     let record = make_record(config, &plan, &outputs)?;
     let record_bytes = json(&record)?;
@@ -354,6 +375,32 @@ struct Environment {
 }
 
 impl Environment {
+    fn initialize_git(&self, root: &Path, directory: &Path) -> Result<Vec<u8>, CompileError> {
+        let git = find_executable("git", &self.path)
+            .ok_or_else(|| error("compile requires already-installed git on PATH"))?;
+        // gh-aw reconciles failure-issue expiry only within a Git repository.
+        // Keep Git metadata outside the reviewed output inventory.
+        require_success(
+            &self.run(
+                &git,
+                &[
+                    "init",
+                    "--quiet",
+                    "--template=",
+                    "--initial-branch=acme",
+                    "--separate-git-dir",
+                    directory
+                        .to_str()
+                        .ok_or_else(|| error("non-UTF-8 Git directory"))?,
+                    ".",
+                ],
+                root,
+            )?,
+            "git init",
+        )?;
+        read_regular(&root.join(".git"))
+    }
+
     fn run(&self, executable: &Path, args: &[&str], root: &Path) -> Result<Output, CompileError> {
         Command::new(executable)
             .args(args)
@@ -435,8 +482,9 @@ fn require_success(output: &Output, tool: &str) -> Result<(), CompileError> {
         Ok(())
     } else {
         Err(error(format!(
-            "{tool} failed ({}): {}",
+            "{tool} failed ({}):\nstdout:\n{}\nstderr:\n{}",
             output.status,
+            String::from_utf8_lossy(&output.stdout),
             String::from_utf8_lossy(&output.stderr)
         )))
     }
