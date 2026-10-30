@@ -1,5 +1,6 @@
 import copy
 import importlib.util
+import io
 import json
 import os
 import subprocess
@@ -236,6 +237,64 @@ class ApprovalTests(unittest.TestCase):
                 self.assertEqual(approval.main(), 1)
             self.assertFalse(output.exists())
             self.assertIn("GitHub API unavailable", summary.read_text())
+
+    def test_preflight_checks_explicit_target_without_actions_writes(self):
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory) / "output"
+            summary = Path(directory) / "summary"
+            env = {
+                "GITHUB_REPOSITORY": "other/repository",
+                "ISSUE_NUMBER": "99",
+                "DEFAULT_BRANCH": "other-branch",
+                "GITHUB_OUTPUT": str(output),
+                "GITHUB_STEP_SUMMARY": str(summary),
+            }
+            stdout = io.StringIO()
+            with patch.dict(os.environ, env), patch.object(
+                approval, "github_api", side_effect=self.api
+            ), patch("sys.stdout", stdout):
+                result = approval.main([
+                    "--repository", REPOSITORY,
+                    "--issue", "42",
+                    "--default-branch", "main",
+                ])
+            self.assertEqual(result, 0)
+            self.assertIn(SPEC_PATH, stdout.getvalue())
+            self.assertIn("#44", stdout.getvalue())
+            self.assertFalse(output.exists())
+            self.assertFalse(summary.exists())
+
+    def test_preflight_fails_closed_without_actions_environment(self):
+        for body, pull, reason in (
+            (f"Spec: `{SPEC_PATH}`", {"merged": True}, "bare path"),
+            (BODY, {"merged": False}, "no verified merge"),
+            (BODY, ValueError("GitHub API unavailable"), "GitHub API unavailable"),
+        ):
+            with self.subTest(body=body, pull=pull):
+                self.responses["repos/owner/acme/issues/42"]["body"] = body
+                if isinstance(pull, Exception):
+                    self.responses["repos/owner/acme/pulls/44"] = pull
+                else:
+                    self.responses["repos/owner/acme/pulls/44"].update(pull)
+                stderr = io.StringIO()
+                with patch.dict(os.environ, {}, clear=True), patch.object(
+                    approval, "github_api", side_effect=self.api
+                ), patch("sys.stderr", stderr):
+                    result = approval.main([
+                        "--repository", REPOSITORY,
+                        "--issue", "42",
+                        "--default-branch", "main",
+                    ])
+                self.assertEqual(result, 1)
+                self.assertIn("blocked", stderr.getvalue().lower())
+                self.assertIn(reason, stderr.getvalue())
+
+    def test_bare_spec_path_error_explains_the_required_link_format(self):
+        self.responses["repos/owner/acme/issues/42"]["body"] = f"Spec: `{SPEC_PATH}`"
+        with self.assertRaises(ValueError) as error:
+            self.check()
+        self.assertIn("https://github.com/owner/acme/blob/", str(error.exception))
+        self.assertIn("bare path", str(error.exception).lower())
 
     @patch.object(subprocess, "run")
     def test_api_errors_are_reported_without_subprocess_stderr(self, run):

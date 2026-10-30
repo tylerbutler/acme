@@ -119,6 +119,20 @@ Keep issues short. Standing rules in this file always apply; do not repeat them.
 - Non-goals: only the exclusions specific to this issue.
 - Link the spec and prerequisite issues. Do not copy spec text into the issue.
 
+Use a full GitHub file URL for the spec:
+`https://github.com/OWNER/REPO/blob/DEFAULT_BRANCH/docs/specs/NAME.md`.
+A bare path, shorthand PR number or link in a comment is not sufficient.
+Identify an optional spec PR with
+`Spec PR: https://github.com/OWNER/REPO/pull/NUMBER`.
+After the spec merges, update the issue body to replace draft references and
+stale status text. Opening or merging a spec PR does not update the issue.
+
+Before requesting owner build approval, run
+`just check-build-approval OWNER/REPO ISSUE_NUMBER DEFAULT_BRANCH`.
+This uses the Build-cloud spec validator with read-only requests. Report any
+failure and repair the issue references before requesting approval. A pass
+checks spec evidence only; it does not approve scope or dispatch a builder.
+
 Do not restate human merge, draft PRs, `just check`, secrets, activation or
 paid-test limits in each issue.
 

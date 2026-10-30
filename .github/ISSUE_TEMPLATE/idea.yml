@@ -18,6 +18,17 @@ body:
     validations:
       required: true
   - type: textarea
+    id: spec
+    attributes:
+      label: Spec and prerequisites
+      description: Optional during planning. Before build approval, use a full spec file URL and an optional spec PR URL.
+      placeholder: |
+        Spec: https://github.com/OWNER/REPO/blob/DEFAULT_BRANCH/docs/specs/NAME.md
+        Spec PR: https://github.com/OWNER/REPO/pull/NUMBER
+        Prerequisites:
+    validations:
+      required: false
+  - type: textarea
     id: non-goals
     attributes:
       label: Non-goals

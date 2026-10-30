@@ -40,6 +40,10 @@ generate-schema:
 check-schema:
     cargo run --quiet --locked --bin generate-schema -- --check
 
+# Reads spec evidence only; does not approve or assign work.
+check-build-approval repository issue default_branch:
+    python3 scripts/check-build-approval.py --repository {{quote(repository)}} --issue {{quote(issue)}} --default-branch {{quote(default_branch)}}
+
 check: fmt-check lint check-configs check-schema test
 
 ci: check

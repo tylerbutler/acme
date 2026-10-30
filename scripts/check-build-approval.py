@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Check Build-cloud spec evidence without assigning work."""
 
+import argparse
 import json
 import os
 import re
@@ -59,7 +60,12 @@ def spec_links(body, repository):
         if is_spec_pr and not found_spec_pr:
             raise ValueError("Missing or invalid explicit spec PR link")
     if not specs:
-        raise ValueError("Missing linked spec under docs/specs/ in this repository")
+        raise ValueError(
+            "Missing linked spec under docs/specs/ in this repository. "
+            "Add a full GitHub file URL, for example "
+            f"https://github.com/{repository}/blob/HEAD/docs/specs/NAME.md. "
+            "A bare path or PR link is not sufficient."
+        )
     return sorted(specs), sorted(pulls)
 
 
@@ -123,32 +129,50 @@ def check_approval(repository, issue_number, default_branch, api):
     }
 
 
-def main():
+def main(argv=()):
+    preflight = bool(argv)
+    if preflight:
+        parser = argparse.ArgumentParser(
+            description=(
+                "Check an issue's spec evidence through read-only GitHub requests. "
+                "This does not approve scope, assign work or change labels. "
+                "With no arguments, use the existing GitHub Actions environment."
+            )
+        )
+        parser.add_argument("--repository", required=True, help="OWNER/REPO")
+        parser.add_argument("--issue", required=True, type=int, help="Issue number")
+        parser.add_argument(
+            "--default-branch", required=True, help="Repository default branch"
+        )
+        args = parser.parse_args(argv)
     try:
         evidence = check_approval(
-            os.environ["GITHUB_REPOSITORY"],
-            int(os.environ["ISSUE_NUMBER"]),
-            os.environ["DEFAULT_BRANCH"],
+            args.repository if preflight else os.environ["GITHUB_REPOSITORY"],
+            args.issue if preflight else int(os.environ["ISSUE_NUMBER"]),
+            args.default_branch if preflight else os.environ["DEFAULT_BRANCH"],
             github_api,
         )
     except (KeyError, ValueError) as error:
         summary = f"## Build approval blocked\n\n{error}\n"
         result = 1
     else:
-        with Path(os.environ["GITHUB_OUTPUT"]).open("a") as output:
-            output.write(f"approved=true\nevidence={json.dumps(evidence)}\n")
+        if not preflight:
+            with Path(os.environ["GITHUB_OUTPUT"]).open("a") as output:
+                output.write(f"approved=true\nevidence={json.dumps(evidence)}\n")
         pulls = ", ".join(f"#{number}" for number in evidence["spec_pull_requests"])
+        heading = "Build spec preflight passed" if preflight else "Build approval verified"
         summary = (
-            "## Build approval verified\n\n"
+            f"## {heading}\n\n"
             f"Specs on `{evidence['branch']}`: {', '.join(evidence['specs'])}\n\n"
             f"Verified merged spec PRs: {pulls or 'none linked (main-only spec)'}\n"
         )
         result = 0
-    with Path(os.environ["GITHUB_STEP_SUMMARY"]).open("a") as output:
-        output.write(summary)
+    if not preflight:
+        with Path(os.environ["GITHUB_STEP_SUMMARY"]).open("a") as output:
+            output.write(summary)
     print(summary, file=sys.stderr if result else sys.stdout)
     return result
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    sys.exit(main(sys.argv[1:]))
