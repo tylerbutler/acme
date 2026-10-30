@@ -6,12 +6,15 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 use std::sync::atomic::{AtomicU64, Ordering};
 
+#[path = "support/compiled_fixture.rs"]
+pub mod compiled_fixture;
+
 const FACTORY: &str = include_str!("../factory/factory.toml");
 const RECORD: &str = "factory/managed-files.json";
 const CI: &str = ".github/workflows/ci.yml";
 const LABELS: &str = ".github/labels.yml";
 
-struct Workspace(PathBuf);
+struct Workspace(PathBuf, compiled_fixture::ReviewFixture);
 
 impl Workspace {
     fn new() -> Self {
@@ -22,6 +25,12 @@ impl Workspace {
             NEXT.fetch_add(1, Ordering::Relaxed)
         ));
         fs::create_dir(&path).unwrap();
+        fs::write(path.join("AGENTS.md"), "Human-owned instructions.\n").unwrap();
+        fs::write(
+            path.join("commit-types.json"),
+            include_bytes!("../commit-types.json"),
+        )
+        .unwrap();
         fs::create_dir(path.join("factory")).unwrap();
         let mut config: toml::Value = toml::from_str(FACTORY).unwrap();
         config["toolchain"]["acme"]["target_version"] = env!("CARGO_PKG_VERSION").into();
@@ -30,16 +39,27 @@ impl Workspace {
             toml::to_string(&config).unwrap(),
         )
         .unwrap();
-        Self(path)
+        Self(path, compiled_fixture::ReviewFixture::new())
     }
 
     fn run(&self, args: &[&str]) -> Output {
-        Command::new(env!("CARGO_BIN_EXE_acme"))
+        let config_path = args
+            .windows(2)
+            .find(|pair| pair[0] == "--config")
+            .map_or_else(
+                || Path::new("factory/factory.toml"),
+                |pair| Path::new(pair[1]),
+            );
+        let review = self.1.refresh(&self.0, config_path);
+        let mut command = Command::new(env!("CARGO_BIN_EXE_acme"));
+        command
             .current_dir(&self.0)
             .args(args)
-            .env("PATH", self.0.join("no-programs"))
-            .output()
-            .unwrap()
+            .env("PATH", self.0.join("no-programs"));
+        if let Some(review) = review {
+            command.arg("--compiled-inputs").arg(review);
+        }
+        command.output().unwrap()
     }
 
     fn sync(&self) {
@@ -135,7 +155,12 @@ fn sync_creates_sorted_hashed_inventory_and_second_sync_is_a_noop() {
     let record = workspace.record();
     assert_eq!(record["format_version"], 1);
     assert_eq!(record["acme_version"], env!("CARGO_PKG_VERSION"));
-    let entries = record["entries"].as_array().unwrap();
+    let all_entries = record["entries"].as_array().unwrap();
+    assert_eq!(all_entries.len(), 13);
+    let entries: Vec<_> = all_entries
+        .iter()
+        .filter(|entry| !matches!(entry["module"].as_str(), Some("intake" | "build_cloud")))
+        .collect();
     assert_eq!(entries.len(), 8);
     let paths: Vec<_> = entries
         .iter()
@@ -282,8 +307,19 @@ fn matching_hand_built_files_are_adopted_but_check_does_not_adopt() {
     let workspace = Workspace::new();
     let config = acme::FactoryConfig::load(workspace.0.join("factory/factory.toml")).unwrap();
     let rendered = workspace.0.join("rendered");
-    acme::render::render_to_directory(&config, &rendered).unwrap();
+    let review = workspace
+        .1
+        .refresh(&workspace.0, Path::new("factory/factory.toml"))
+        .unwrap();
+    acme::render::render_to_directory_with_compiled_inputs(
+        &config,
+        &workspace.0,
+        &rendered,
+        Some(&review),
+    )
+    .unwrap();
     fs::rename(rendered.join(".github"), workspace.0.join(".github")).unwrap();
+    fs::rename(rendered.join("scripts"), workspace.0.join("scripts")).unwrap();
     fs::remove_dir(rendered).unwrap();
     let before = tree(&workspace.0);
     let output = workspace.run(&["sync", "--check"]);
@@ -337,6 +373,13 @@ fn disabling_intake_removes_only_recorded_outputs_and_keeps_directories() {
     workspace.sync();
     let unrelated = workspace.0.join(".github/ISSUE_TEMPLATE/custom.yml");
     fs::write(&unrelated, "keep").unwrap();
+    // Keep an explicitly unowned source, as before agent workflow adoption.
+    let mut record = workspace.record();
+    record["entries"]
+        .as_array_mut()
+        .unwrap()
+        .retain(|entry| entry["path"] != ".github/workflows/intake.md");
+    workspace.write_record(&record);
     fs::write(workspace.0.join(".github/workflows/intake.md"), "keep").unwrap();
     workspace.change(disable_intake);
     let before = tree(&workspace.0);
@@ -674,10 +717,19 @@ fn staged_write_failure_cleans_temporary_file_without_replacing_output() {
     workspace.change(|config| {
         config["modules"]["ci"]["commands"][0] = "x".repeat(8192).into();
     });
+    let review = workspace
+        .1
+        .refresh(&workspace.0, Path::new("factory/factory.toml"))
+        .unwrap();
     let output = Command::new("/bin/sh")
         .current_dir(&workspace.0)
-        .args(["-c", "ulimit -f 2; trap '' XFSZ; exec \"$1\" sync", "sh"])
+        .args([
+            "-c",
+            "ulimit -f 2; trap '' XFSZ; exec \"$1\" sync --compiled-inputs \"$2\"",
+            "sh",
+        ])
         .arg(env!("CARGO_BIN_EXE_acme"))
+        .arg(review)
         .output()
         .unwrap();
     fails(&output, "sync I/O failure");
@@ -709,10 +761,21 @@ fn staged_filename_collisions_never_replace_existing_files() {
         fs::write(path, "keep").unwrap();
     }
     let config = acme::FactoryConfig::load(workspace.0.join("factory/factory.toml")).unwrap();
-    let error = acme::render::sync_repository(&config, &workspace.0, false).unwrap_err();
+    let review = workspace
+        .1
+        .refresh(&workspace.0, Path::new("factory/factory.toml"))
+        .unwrap();
+    let error = acme::render::sync_repository_with_compiled_inputs(
+        &config,
+        &workspace.0,
+        false,
+        Some(&review),
+    )
+    .unwrap_err();
     assert!(error.to_string().contains("cannot reserve a staged file"));
     assert!(!workspace.0.join(RECORD).exists());
-    acme::render::sync_repository(&config, &workspace.0, false).unwrap();
+    acme::render::sync_repository_with_compiled_inputs(&config, &workspace.0, false, Some(&review))
+        .unwrap();
     for path in collisions {
         assert_eq!(fs::read_to_string(path).unwrap(), "keep");
     }

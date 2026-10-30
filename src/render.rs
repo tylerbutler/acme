@@ -1,6 +1,7 @@
 use crate::{BuiltinModule, ConfigBinding, FactoryConfig, ModuleManifest, builtin_modules};
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
+use std::path::Path;
 
 mod agent_sources;
 mod compiled;
@@ -12,8 +13,75 @@ pub use compiled::{
     CompileError, CompiledAgentOutput, ValidatedCompiledInputs, compile_agent_workflows,
     validate_compiled_inputs,
 };
-pub use output::{RenderError, render_to_directory};
-pub use sync::{SyncError, SyncReport, init_repository, sync_repository};
+pub use output::{RenderError, render_to_directory, render_to_directory_with_compiled_inputs};
+pub use sync::{
+    SyncError, SyncReport, init_repository, sync_repository, sync_repository_with_compiled_inputs,
+};
+
+struct BytePlan {
+    acme_version: &'static str,
+    outputs: Vec<ByteOutput>,
+}
+
+struct ByteOutput {
+    module: String,
+    path: &'static str,
+    contents: Vec<u8>,
+}
+
+fn m2_byte_plan(config: &FactoryConfig) -> Result<BytePlan, RenderPlanError> {
+    let plan = build_render_plan(config)?;
+    let outputs = plan
+        .outputs
+        .into_iter()
+        .map(|output| {
+            let contents = output::render_output(&output)
+                .map_err(|error| RenderPlanError(error.to_string()))?;
+            Ok(ByteOutput {
+                module: output.module,
+                path: output.path,
+                contents,
+            })
+        })
+        .collect::<Result<_, RenderPlanError>>()?;
+    Ok(BytePlan {
+        acme_version: plan.acme_version,
+        outputs,
+    })
+}
+
+fn final_byte_plan(
+    config: &FactoryConfig,
+    repository: &Path,
+    compiled_inputs: Option<&Path>,
+) -> Result<BytePlan, RenderPlanError> {
+    let mut plan = m2_byte_plan(config)?;
+    if (config.modules.intake.enabled || config.modules.build_cloud.enabled)
+        && compiled_inputs.is_none()
+    {
+        return Err(RenderPlanError(
+            "enabled agent modules require --compiled-inputs DIR; explicitly compile and review approved inputs first"
+                .to_owned(),
+        ));
+    }
+    if let Some(directory) = compiled_inputs {
+        let validated = validate_compiled_inputs(config, repository, directory)
+            .map_err(|error| RenderPlanError(error.to_string()))?;
+        plan.outputs
+            .extend(validated.outputs.into_iter().map(|output| ByteOutput {
+                module: output.ownership.module.name().to_owned(),
+                path: output.ownership.path,
+                contents: output.contents,
+            }));
+    }
+    plan.outputs.sort_by_key(|output| output.path);
+    validate_byte_outputs(&plan.outputs)?;
+    Ok(plan)
+}
+
+fn validate_byte_outputs(outputs: &[ByteOutput]) -> Result<(), RenderPlanError> {
+    validate_output_paths(outputs.iter().map(|output| output.path))
+}
 
 #[derive(Debug, Eq, PartialEq)]
 pub struct RenderPlan {
@@ -62,6 +130,7 @@ impl fmt::Display for RenderPlanError {
 
 impl std::error::Error for RenderPlanError {}
 
+/// Plan M2 templates and stage dependencies, not full compiled workflow output.
 pub fn build_render_plan(config: &FactoryConfig) -> Result<RenderPlan, RenderPlanError> {
     build_render_plan_with_catalog(config, builtin_modules())
 }
@@ -376,13 +445,11 @@ fn template_inputs(config: &FactoryConfig, path: &str) -> TemplateInputs {
     }
 }
 
-fn validate_paths(
-    outputs: &[PlannedOutput],
-    selected_modules: &[ModuleManifest],
+fn validate_output_paths<'a>(
+    outputs: impl IntoIterator<Item = &'a str>,
 ) -> Result<(), RenderPlanError> {
     let mut paths = BTreeSet::new();
-    for output in outputs {
-        let path = output.path;
+    for path in outputs {
         if path.is_empty()
             || path
                 .bytes()
@@ -405,6 +472,14 @@ fn validate_paths(
             }
         }
     }
+    Ok(())
+}
+
+fn validate_paths(
+    outputs: &[PlannedOutput],
+    selected_modules: &[ModuleManifest],
+) -> Result<(), RenderPlanError> {
+    validate_output_paths(outputs.iter().map(|output| output.path))?;
     let mut inventory = BTreeMap::new();
     for module in builtin_modules() {
         let manifest = module
@@ -432,4 +507,60 @@ fn validate_paths(
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{ByteOutput, validate_byte_outputs};
+
+    fn union_outputs(paths: &[&'static str]) -> Vec<ByteOutput> {
+        paths
+            .iter()
+            .enumerate()
+            .map(|(index, path)| ByteOutput {
+                module: if index == 0 { "ci" } else { "intake" }.to_owned(),
+                path,
+                contents: Vec::new(),
+            })
+            .collect()
+    }
+
+    #[test]
+    fn final_union_rejects_collisions_and_file_directory_overlaps() {
+        for paths in [
+            [".github/workflows/ci.yml", ".github/workflows/ci.yml"],
+            [".GITHUB/workflows/CI.yml", ".github/workflows/ci.yml"],
+            [".github/workflows", ".github/workflows/intake.md"],
+            ["scripts", "scripts/check-build-approval.py"],
+        ] {
+            assert!(
+                validate_byte_outputs(&union_outputs(&paths)).is_err(),
+                "accepted conflicting union paths: {paths:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn final_union_rejects_unsafe_paths_but_accepts_distinct_file_prefixes() {
+        for path in [
+            "../escape",
+            "/absolute",
+            ".git/config",
+            "scripts\\helper",
+            "",
+        ] {
+            assert!(
+                validate_byte_outputs(&union_outputs(&["safe", path])).is_err(),
+                "accepted unsafe union path: {path:?}"
+            );
+        }
+        assert!(
+            validate_byte_outputs(&union_outputs(&[
+                ".github/workflows/intake.md",
+                ".github/workflows/intake.md-extra",
+                "scripts/check-build-approval.py",
+            ]))
+            .is_ok()
+        );
+    }
 }

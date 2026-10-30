@@ -1,4 +1,4 @@
-use super::{PlannedOutput, TemplateInputs, build_render_plan};
+use super::{PlannedOutput, TemplateInputs, final_byte_plan};
 use crate::FactoryConfig;
 use std::fmt::{self, Write as _};
 use std::fs::{self, OpenOptions};
@@ -16,13 +16,24 @@ impl fmt::Display for RenderError {
 
 impl std::error::Error for RenderError {}
 
+/// Render M2-only configurations; enabled agents require explicit compiled inputs.
 pub fn render_to_directory(config: &FactoryConfig, destination: &Path) -> Result<(), RenderError> {
-    let plan = build_render_plan(config).map_err(|error| RenderError(error.to_string()))?;
-    let outputs = plan
-        .outputs
-        .iter()
-        .map(|output| render_output(output).map(|bytes| (output.path, bytes)))
-        .collect::<Result<Vec<_>, _>>()?;
+    render_to_directory_with_compiled_inputs(config, Path::new("."), destination, None)
+}
+
+/// Render the full inventory from captured, validated review bytes. Never compile.
+///
+/// `repository` supplies authored prerequisites. Paths resolve against the process
+/// working directory. Enabled agents require `compiled_inputs`; supplied inputs
+/// are always validated before creating the destination.
+pub fn render_to_directory_with_compiled_inputs(
+    config: &FactoryConfig,
+    repository: &Path,
+    destination: &Path,
+    compiled_inputs: Option<&Path>,
+) -> Result<(), RenderError> {
+    let plan = final_byte_plan(config, repository, compiled_inputs)
+        .map_err(|error| RenderError(error.to_string()))?;
     let destination =
         std::path::absolute(destination).map_err(|error| io_error(destination, &error))?;
     if destination
@@ -49,15 +60,15 @@ pub fn render_to_directory(config: &FactoryConfig, destination: &Path) -> Result
     }
 
     create_directories(&destination)?;
-    for (relative, bytes) in outputs {
-        let path = destination.join(relative);
+    for output in plan.outputs {
+        let path = destination.join(output.path);
         create_directories(path.parent().expect("planned output has a parent"))?;
         let mut file = OpenOptions::new()
             .write(true)
             .create_new(true)
             .open(&path)
             .map_err(|error| io_error(&path, &error))?;
-        file.write_all(&bytes)
+        file.write_all(&output.contents)
             .map_err(|error| io_error(&path, &error))?;
     }
     Ok(())

@@ -1,4 +1,5 @@
-use super::{build_render_plan, init, output::render_output};
+use super::{BytePlan, final_byte_plan, init, m2_byte_plan};
+use crate::agent_catalog::agent_modules;
 use crate::{FactoryConfig, builtin_modules};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -83,13 +84,32 @@ struct Change {
 }
 
 /// Check all paths before writes. Do not run with concurrent checkout writers.
+///
 /// Missing owned outputs are recreated. Missing obsolete outputs need no deletion.
+/// Enabled agents require `sync_repository_with_compiled_inputs` instead.
 pub fn sync_repository(
     config: &FactoryConfig,
     root: &Path,
     check: bool,
 ) -> Result<SyncReport, SyncError> {
-    synchronize(config, root, check, None)
+    sync_repository_with_compiled_inputs(config, root, check, None)
+}
+
+/// Synchronize the full inventory from validated review bytes. Never compile.
+///
+/// `root` supplies authored prerequisites and output paths. The review directory
+/// resolves against the process working directory, not `root`. Enabled agents
+/// require inputs. Check mode reports drift without writes; I/O failures during
+/// application may leave partial output changes with the old ownership record.
+pub fn sync_repository_with_compiled_inputs(
+    config: &FactoryConfig,
+    root: &Path,
+    check: bool,
+    compiled_inputs: Option<&Path>,
+) -> Result<SyncReport, SyncError> {
+    let plan = final_byte_plan(config, root, compiled_inputs)
+        .map_err(|error| SyncError(error.to_string()))?;
+    synchronize(config, root, check, None, plan)
 }
 
 /// Initialize from explicitly approved bytes without replacing existing config.
@@ -110,7 +130,8 @@ pub fn init_repository(root: &Path, config_path: &Path) -> Result<SyncReport, Sy
         .map_err(|error| SyncError(format!("approved config is not UTF-8: {error}")))?;
     let config = FactoryConfig::from_toml(text).map_err(|error| SyncError(error.to_string()))?;
     init::validate_config(&config)?;
-    synchronize(&config, root, false, Some(&bytes))
+    let plan = m2_byte_plan(&config).map_err(|error| SyncError(error.to_string()))?;
+    synchronize(&config, root, false, Some(&bytes), plan)
 }
 
 fn synchronize(
@@ -118,8 +139,8 @@ fn synchronize(
     root: &Path,
     check: bool,
     init_config: Option<&[u8]>,
+    plan: BytePlan,
 ) -> Result<SyncReport, SyncError> {
-    let plan = build_render_plan(config).map_err(|error| SyncError(error.to_string()))?;
     let root = std::path::absolute(root).map_err(|error| io_error(root, &error))?;
     if root.components().any(|part| part == Component::ParentDir) {
         return Err(SyncError(
@@ -141,14 +162,14 @@ fn synchronize(
     let old = read_record(old_bytes.as_deref())?;
     let mut desired = BTreeMap::new();
     let mut entries = Vec::new();
-    for output in &plan.outputs {
-        let bytes = render_output(output).map_err(|error| SyncError(error.to_string()))?;
+    for output in plan.outputs {
+        let path = output.path.to_owned();
         entries.push(OwnedFile {
-            module: output.module.clone(),
-            path: output.path.to_owned(),
-            sha256: hash(&bytes),
+            module: output.module,
+            path: path.clone(),
+            sha256: hash(&output.contents),
         });
-        desired.insert(output.path.to_owned(), bytes);
+        desired.insert(path, output.contents);
     }
     for entry in old {
         let before = read_regular(&root.join(&entry.path))?;
@@ -185,12 +206,13 @@ fn synchronize(
     let mut new_bytes = serde_json::to_vec_pretty(&record)
         .map_err(|error| SyncError(format!("cannot encode ownership record: {error}")))?;
     new_bytes.push(b'\n');
+    let outputs = record
+        .entries
+        .iter()
+        .map(|entry| entry.path.clone())
+        .collect();
     let mut report = SyncReport {
-        outputs: plan
-            .outputs
-            .iter()
-            .map(|output| output.path.to_owned())
-            .collect(),
+        outputs,
         creates: Vec::new(),
         updates: Vec::new(),
         removals: Vec::new(),
@@ -313,6 +335,11 @@ fn read_record(bytes: Option<&[u8]>) -> Result<Vec<OwnedFile>, SyncError> {
             .map_err(|error| SyncError(error.to_string()))?;
         for asset in module.assets {
             inventory.insert(asset.output_path, manifest.name.clone());
+        }
+    }
+    for module in agent_modules() {
+        for entry in module.ownership {
+            inventory.insert(entry.path, entry.module.name().to_owned());
         }
     }
     let mut paths = BTreeSet::new();
