@@ -13,6 +13,12 @@ validated module inventory paths in the current repository. `init` prepares a
 local change set from approved config for a supported Rust CLI project.
 Automatic dispatch is paused.
 
+**Planned project support:** built-in presets for Rust CLI, Rust library,
+TypeScript library, Gleam library and Astro website projects. After M5,
+expansion starts with Rust library and TypeScript library, before the deferred
+M6–M8 work. Public plugins are deferred. Only Rust CLI is supported today;
+see the [preset expansion plan](docs/specs/0013-builtin-factory-presets.md).
+
 ## Development
 
 ```sh

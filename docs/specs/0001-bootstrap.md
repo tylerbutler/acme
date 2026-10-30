@@ -60,6 +60,12 @@ blocked until the owner completes stage0 adoption under that spec. Automatic
 dispatch ([spec 0010](0010-spec-dispatch-coordinator.md)) is paused and is not
 on the path to any milestone below.
 
+After M5, complete the [built-in factory-preset expansion](0013-builtin-factory-presets.md)
+before the deferred M6–M8 work. Plan Rust library, TypeScript library, Gleam
+library and Astro website presets alongside the existing Rust CLI preset.
+Public plugins remain deferred. This direction does not approve implementation
+or change the current Rust-only command contract.
+
 | Milestone | Deliverable | Exit check |
 | --- | --- | --- |
 | M1 | Rust config types, generated schema, module manifests | Schema validates this config |
@@ -67,6 +73,7 @@ on the path to any milestone below.
 | M3 | Render, sync and version pinning | Zero golden diff, idempotent sync and clean version bump |
 | M4 | Thin template, interview skill and deterministic init | Brief to merged init PR on a sample project |
 | M5 | Rendered intake and build-cloud | No manual workflow drift; staged then live |
+| Preset expansion | Built-in Rust library, TypeScript library, Gleam library and Astro website presets | Per-preset fixtures and safe sync; Rust library and TypeScript library first |
 | M6 | Review and isolated holdout | Block a seeded bad PR that passes CI |
 | M7 | Local builds, provenance, release and ops | Independent tasks through gated merges |
 | M8 | Second project from template | No hand edits to rendered files |
