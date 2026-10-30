@@ -33,6 +33,39 @@ or a Markdown link whose label starts with `Spec PR:`. The `Merged`, `Approved`
 and `Proposed` prefixes are also supported. Ordinary prose and unrelated PR
 links are not approval declarations.
 
+### Check an issue before build approval
+
+Put a full spec file URL in the issue body. A code-formatted path, a shorthand
+PR number, a link in a comment or a link only in the spec PR body does not
+satisfy the checker. For example:
+
+```markdown
+## Spec and prerequisites
+[Spec](https://github.com/tylerbutler/acme/blob/main/docs/specs/0012-intake-spec-classification.md)
+Spec PR: https://github.com/tylerbutler/acme/pull/100
+```
+
+The spec PR line is optional for an existing default-branch spec. If present,
+it must name a merged PR that changes a linked spec. After a spec merges,
+update its implementation issue to remove stale draft status and add these
+links. PR publication and merge do not repair the issue body automatically.
+
+Run the same validator locally before requesting an owner ready label:
+
+```sh
+just check-build-approval tylerbutler/acme 99 main
+```
+
+Supply the intended repository, issue number and actual default branch.
+The command requires an authenticated `gh` CLI. It reads current issue,
+file and PR metadata, prints the result, and exits nonzero on missing,
+invalid or unavailable evidence. It does not write Actions output files,
+change GitHub state, run inference or assign work. A pass is not approval of
+scope or proof that prerequisites are complete. Build-cloud repeats its
+check when the owner applies the ready label.
+
+### Continuous operation
+
 The owner approved leaving both agent workflows enabled with live safe outputs
 and both enablement variables set to `true`. Intake handles admin-opened issues.
 Build-cloud still requires the owner to add `ready-for-agent`.
