@@ -1,0 +1,67 @@
+{
+  "context": {
+    "eventName": "issues",
+    "actor": "owner",
+    "repo": {"owner": "owner", "repo": "acme"},
+    "runId": 123,
+    "runNumber": 1,
+    "workflow": "Offline proof",
+    "payload": {
+      "action": "labeled",
+      "sender": {"login": "owner", "type": "User"},
+      "label": {"name": "ready-for-agent"},
+      "repository": {
+        "name": "acme",
+        "full_name": "owner/acme",
+        "default_branch": "main",
+        "owner": {"login": "owner"}
+      },
+      "issue": {
+        "number": 42,
+        "user": {"login": "owner", "type": "User"},
+        "labels": [{"name": "ready-for-agent"}]
+      }
+    }
+  },
+  "triggering_actor": "owner",
+  "variables": {
+    "ACME_AGENT_WORKFLOWS_ENABLED": "true",
+    "ACME_CLOUD_ASSIGNMENT_ENABLED": "true"
+  },
+  "permission": "admin",
+  "cancelled": false,
+  "agent_result": "success",
+  "detection": {
+    "result": "success",
+    "outputs": {
+      "detection_conclusion": "success",
+      "detection_reason": "",
+      "run_detection": "true"
+    }
+  },
+  "remote": {
+    "repos/owner/acme/issues/42": {
+      "id": 4200,
+      "number": 42,
+      "state": "open",
+      "title": "Offline build",
+      "body": "## Goal\nProve the event gates.\n## Acceptance scenarios\nTests pass.\n## Non-goals\nNo live writes.\nSpec: https://github.com/owner/acme/blob/main/docs/specs/0006-m5.md\nSpec PR: https://github.com/owner/acme/pull/44\n",
+      "labels": [{"name": "ready-for-agent"}],
+      "assignees": []
+    },
+    "repos/owner/acme/contents/docs/specs/0006-m5.md?ref=main": {
+      "type": "file",
+      "path": "docs/specs/0006-m5.md",
+      "sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    },
+    "repos/owner/acme/pulls/44": {
+      "number": 44,
+      "state": "closed",
+      "merged": true,
+      "base": {"ref": "main", "repo": {"full_name": "owner/acme"}}
+    },
+    "repos/owner/acme/pulls/44/files?per_page=100&page=1": [
+      {"filename": "docs/specs/0006-m5.md", "status": "added"}
+    ]
+  }
+}

@@ -67,6 +67,40 @@ staging, budgets, assignments or issue state. It never runs the bootstrap script
 See the [owner-only M2 acceptance procedure](docs/bootstrap.md#owner-only-m2-acceptance).
 Implementation and fake-state tests do not establish the live M2 exit check.
 
+### Offline event-gate proof
+
+```sh
+ACME_GH_AW_ACTIONS=/absolute/path/to/gh-aw-actions just prove-event-gates
+```
+
+Supply a local copy of `github/gh-aw-actions` at
+`de9d416cac8ccea1a2d582cb07c4b7db96946792` (gh-aw `v0.93.5`).
+The proof verifies hashes of its JavaScript and JSON runtime files and requires
+Node.js. It does not download tools, use credentials, run inference or make
+remote writes. It reads the reviewed compiled Intake and Build-cloud locks,
+executes their membership and safe-output scripts with fake GitHub state,
+and runs the approval helper with a fake read-only `gh api`.
+
+Fixtures check event types, actor/label/variable gates, job dependencies,
+permissions, spec evidence, output limits, target binding and assignment replay.
+The guard evaluator supports only the expression subset used by these locks;
+unknown expressions, API calls and runtime files fail the proof. Runtime files
+under `/tmp/gh-aw` are isolated for each fixture. Ordinary `just check` runs
+the fixture checks but skips runtime execution when `ACME_GH_AW_ACTIONS` is
+absent. A skip is not proof; the explicit command fails if the runtime is absent.
+
+**Current blocker:** the explicit proof fails
+`test_missing_issue_scope_blocks_assignment`. A proposed assignment with valid
+spec evidence but no goal, acceptance scenarios or non-goals reaches the fake
+assignment API. These scope checks are controller instructions, not deterministic
+guards. The test does not change live workflows or replace this failure with
+an expected pass.
+
+This is not a full Actions runner. Detection outcomes are fixture inputs.
+It does not prove controller compliance, real token scopes, concurrent-run
+exclusion, a builder's draft-PR behavior or the live human-merge boundary.
+Those boundaries still need separate evidence and owner-approved acceptance.
+
 ### Local init
 
 Init is included in the `0.2.0` release candidate, not the adopted `v0.1.0`
