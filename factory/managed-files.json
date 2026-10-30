@@ -1,11 +1,11 @@
 {
   "format_version": 1,
-  "acme_version": "0.1.0",
+  "acme_version": "0.4.0",
   "entries": [
     {
       "module": "issue-forms",
       "path": ".github/ISSUE_TEMPLATE/bug.yml",
-      "sha256": "8f46ef9608fbd817c2122501029e5aff98770dc262b4a1631be345dc482e610d"
+      "sha256": "921787bba69edc54e3173d578b2b02683c800e3750680ce50f16cecc24f1871a"
     },
     {
       "module": "issue-forms",
@@ -15,12 +15,12 @@
     {
       "module": "issue-forms",
       "path": ".github/ISSUE_TEMPLATE/idea.yml",
-      "sha256": "120b0387e6bbc3fb3c1c39b564a1134f6a77c6a37dce345c04eabac6aabff2e4"
+      "sha256": "f5df2e1bb0224a020feb41d426fe12a476c4d20bcaaff6b354bfdb631361e747"
     },
     {
       "module": "issue-forms",
       "path": ".github/ISSUE_TEMPLATE/spec-request.yml",
-      "sha256": "2cdd68897ce42bfc993562c2b7c4a22b66d808c73b50697165953df28ee136b3"
+      "sha256": "06b13732820754c072328416db9eb1521f7ccb93bd135b93cad826b3f87643bd"
     },
     {
       "module": "ci",
@@ -38,9 +38,34 @@
       "sha256": "9632ead9609e04753b81ab41063833e9c0b8827f50f1045530436b4935cbacc8"
     },
     {
+      "module": "build_cloud",
+      "path": ".github/workflows/build-cloud.lock.yml",
+      "sha256": "f5e077f7d838da90938957bcfa505d3b742de7b71b237adcee23e8078bfc61e1"
+    },
+    {
+      "module": "build_cloud",
+      "path": ".github/workflows/build-cloud.md",
+      "sha256": "ba4a118e9a3a08728dc8f330da5444c600db307ed7ba125ba1603805af7c7237"
+    },
+    {
       "module": "ci",
       "path": ".github/workflows/ci.yml",
       "sha256": "bb485d9fc6e2bb9812e794e669574f24d19d78ad43a16cb639a777e1fd1feb7e"
+    },
+    {
+      "module": "intake",
+      "path": ".github/workflows/intake.lock.yml",
+      "sha256": "e25604816670bb63d5ac6e412cf3a13aa451ea9d7928318568b348ba04921a99"
+    },
+    {
+      "module": "intake",
+      "path": ".github/workflows/intake.md",
+      "sha256": "5b4c973ddb41e8c54a76acd17e31a04203861af039af9855747529c386920a9f"
+    },
+    {
+      "module": "build_cloud",
+      "path": "scripts/check-build-approval.py",
+      "sha256": "34ed81b6eb2ce0752a273de9bf16dddc886fd44eca5e753a53087f987aac4286"
     }
   ]
 }

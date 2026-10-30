@@ -354,7 +354,8 @@ prerequisites merged in
 [#106](https://github.com/tylerbutler/acme/pull/106) and
 [#107](https://github.com/tylerbutler/acme/pull/107).
 
-The `0.3.0` candidate includes the M5 implementation. The existing `v0.2.0`
+The `0.4.0` release includes the M5 implementation and the compiler compatibility
+fix from [#110](https://github.com/tylerbutler/acme/pull/110). The existing `v0.2.0`
 tag identifies older code; never move it to this implementation. The live
 factory stays pinned to `0.1.0` until the owner approves a separate adoption
 change. Preparing this release does not publish it, install a binary or adopt
@@ -369,13 +370,14 @@ budgets unchanged. Do not use bootstrap mode or a fictitious pin. Do not run
 ### Build and publish the merged release
 
 1. Select the human-merged release-preparation revision on `main`. Confirm that
-   its package version is `0.3.0` and the checkout is clean. Use the pinned Rust
+   its package version is `0.4.0` and the checkout is clean. Use the pinned Rust
    toolchain, then record these commands and their results:
 
    ```sh
    git rev-parse HEAD
    rustc --version
    just check
+   just prove-compilation
    cargo build --locked --release --bin acme
    shasum -a 256 target/release/acme
    ```
@@ -385,7 +387,7 @@ budgets unchanged. Do not use bootstrap mode or a fictitious pin. Do not run
    Preserve the binary outside `target/`, together with its revision, package
    version, toolchain and SHA-256. Do not rebuild it from an unmerged adoption
    branch and call it the released binary.
-2. The owner publishes a new immutable `v0.3.0` tag on that exact merged
+2. The owner publishes a new immutable `v0.4.0` tag on that exact merged
    revision. If it already exists, verify its target; do not move it. Record
    the tag and release evidence in #96. Changes to released code require a new
    package version and tag.
@@ -406,9 +408,10 @@ budgets unchanged. Do not use bootstrap mode or a fictitious pin. Do not run
 
 1. On a separate adoption branch, review a change to only
    `toolchain.acme.target_version` in `factory/factory.toml`, from `"0.1.0"`
-   to `"0.3.0"`. Keep `bootstrap = false` and all other config values unchanged.
+   to `"0.4.0"`. Keep `bootstrap = false` and all other config values unchanged.
    The package version, real release tag and installed binary must match.
-2. Install gh-aw `v0.93.5` and native actionlint `1.7.12` or later if missing.
+2. Install gh-aw `v0.93.5`, native actionlint `1.7.12` or later, and Git `2.28`
+   or later if missing.
    Tool installation is an explicit prerequisite, not part of compilation.
    With the approved config, compile and render into separate new directories:
 
@@ -458,7 +461,7 @@ budgets unchanged. Do not use bootstrap mode or a fictitious pin. Do not run
    failures, unavailable API evidence and deferred checks. Do not claim that
    credential-name checks verify token scopes or assignment capability.
 5. Review the config pin and `factory/managed-files.json` diff. Expect the
-   generating version to become `0.3.0`, with the existing M2 entries preserved
+   generating version to become `0.4.0`, with the existing M2 entries preserved
    and five exact agent-module ownership entries added. No workflow, helper or
    other rendered content may change for this adoption. Link the draft adoption
    PR, release revision/tag, installed binary hash, compilation record,
@@ -470,7 +473,7 @@ release and adoption evidence is complete and the adoption change is
 human-merged. Staged/live event acceptance is separate work with separate
 owner approval.
 
-### M5 adoption attempt: blocked
+### M5 0.3.0 adoption attempt: blocked
 
 On 2026-10-30, the owner published annotated tag `v0.3.0` with tag object
 `9a9fcc0b8d189c4de8c8d7d6e745e99d52c0ce18`, targeting human-merged revision
@@ -508,10 +511,58 @@ and configured secret-name checks passed. Path-author enforcement, model
 separation and token-scope verification remain deferred. Doctor did not repair
 settings or start inference.
 
-Do not merge the proposed pin as successful adoption. Resolve the compiler and
-validator compatibility problem through a reviewed change, publish a new
-version if released code must change, and repeat the procedure above. Keep
-#96 open until the comparison, sync, doctor and human-merge evidence is complete.
+The `0.3.0` pin was not adopted. PR #110 resolved the compiler and validator
+blockers in `0.4.0`. The next section records the repeated adoption checks.
+
+### M5 0.4.0 adoption verification: pending human merge
+
+On 2026-10-30, the owner published annotated tag `v0.4.0`, with tag object
+`e91573142f631033f36e88bb74acca5a623a29b3`, targeting merged revision
+`556001a110a5de9fab8ee9da70858ce1f7f82e3c` from #110.
+The clean release checkout passed `TMPDIR=/private/tmp just check`,
+`TMPDIR=/private/tmp just prove-compilation` and
+`cargo build --locked --release --bin acme`, using
+`rustc 1.85.1 (4eb161250 2025-03-15)`.
+Both installed-compiler proofs passed. Three optional Python checks were skipped.
+[Merged-revision CI](https://github.com/tylerbutler/acme/actions/runs/41131271250)
+also passed.
+
+The preserved binary was installed at an explicit session-local path beside
+the previous binary. Both copies have SHA-256
+`9cce85ee825cce28e983543db7796600853b32d30261ddf865c87c7af1f4413d`.
+Every adoption command used that installed path, not a build from this branch.
+The config changes only `toolchain.acme.target_version` to `0.4.0`.
+
+Compilation passed with gh-aw `v0.93.5` and actionlint `1.7.12`.
+The reviewed `compiled-workflows.json` has SHA-256
+`4a2ce6cf4d827fc73ea22f5ad4e2e7cf5d825402656219621b41b186c40622c9`.
+All 13 rendered files match the checkout byte for byte, including hidden paths.
+The comparison report has SHA-256
+`2d8860a0420f0458516df577c4ac800596615880558346341436dddb4fa9d133`.
+The review directory, compilation record, comparison and command reports remain
+outside the checkout until review is complete. Evidence is linked from #96 and
+the adoption PR [#109](https://github.com/tylerbutler/acme/pull/109).
+
+The first read-only sync plan correctly rejected stale ownership hashes for
+`bug.yml`, `idea.yml` and `spec-request.yml`. Merged
+[#103](https://github.com/tylerbutler/acme/pull/103) added the spec-reference
+fields to these files without changing their recorded hashes. All three old
+hashes match the files before #103; all three current files match the renderer.
+The owner explicitly approved correction of only these three hashes and local
+sync. No file bytes were changed to satisfy the record.
+
+After that correction, `sync --check` requested only an ownership-record update.
+The first sync wrote that record, the second reported `Sync is clean.`, and
+the final `sync --check` reported `Sync is clean.`. The record now has version
+`0.4.0`, the eight M2 entries with the three approved hash corrections, and five
+new agent-module entries. No workflow, helper or other rendered bytes changed.
+
+Fresh read-only doctor exited 0 with 88 PASS, 0 FAIL and 3 DEFERRED.
+Path-author enforcement, model separation and token-scope verification remain
+deferred. Secret-name checks do not prove token scopes or assignment capability.
+No remote repair, workflow activation, gate change or paid test was performed.
+Keep #96 open until the owner merges #109. Staged/live event acceptance remains
+separate work.
 
 ## M4 release preparation and template handoff
 
