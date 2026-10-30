@@ -1,6 +1,6 @@
 use super::{
-    DoctorReport, GitHubError, GitHubMethod, GitHubTransport, asset_json, push, run_doctor,
-    semantic_equal, single_object, split_repository,
+    DoctorReport, GitHubError, GitHubMethod, GitHubTransport, asset_json, push,
+    run_doctor_with_compiled_inputs, semantic_equal, single_object, split_repository,
 };
 use crate::FactoryConfig;
 use serde_json::{Value, json};
@@ -40,6 +40,18 @@ pub fn run_doctor_fix(
     github: &impl GitHubTransport,
     checkout: Option<&str>,
 ) -> DoctorReport {
+    run_doctor_fix_with_compiled_inputs(config, root, github, checkout, None)
+}
+
+/// Apply only existing settings repairs, then check fresh state with the same review inputs.
+#[must_use]
+pub fn run_doctor_fix_with_compiled_inputs(
+    config: &FactoryConfig,
+    root: &Path,
+    github: &impl GitHubTransport,
+    checkout: Option<&str>,
+    compiled_inputs: Option<&Path>,
+) -> DoctorReport {
     let mut report = DoctorReport { checks: Vec::new() };
     if split_repository(&config.repository).is_none()
         || checkout.is_some_and(|repository| !repository.eq_ignore_ascii_case(&config.repository))
@@ -54,7 +66,7 @@ pub fn run_doctor_fix(
         github,
         responses: RefCell::new(BTreeMap::new()),
     };
-    report = run_doctor(config, root, &snapshot);
+    report = run_doctor_with_compiled_inputs(config, root, &snapshot, compiled_inputs);
     let repairs = match build_plan(config, &snapshot, &report) {
         Ok(repairs) => repairs,
         Err(message) => {
@@ -73,7 +85,7 @@ pub fn run_doctor_fix(
         applied += 1;
     }
     // Read fresh state after every attempt. A failed request can still change remote state.
-    report = run_doctor(config, root, github);
+    report = run_doctor_with_compiled_inputs(config, root, github, compiled_inputs);
     push(
         &mut report,
         "repair.plan",

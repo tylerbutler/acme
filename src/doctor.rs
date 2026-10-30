@@ -1,11 +1,11 @@
 use crate::{ConfigBinding, FactoryConfig, builtin_modules};
 use serde_json::{Value, json};
 use std::collections::BTreeMap;
-use std::fs;
 use std::path::Path;
 
+mod agents;
 mod repair;
-pub use repair::{checkout_repository, run_doctor_fix};
+pub use repair::{checkout_repository, run_doctor_fix, run_doctor_fix_with_compiled_inputs};
 
 pub trait GitHubTransport {
     fn get(&self, endpoint: &str) -> Result<Vec<Value>, GitHubError>;
@@ -107,8 +107,22 @@ pub fn run_doctor(
     root: &Path,
     github: &impl GitHubTransport,
 ) -> DoctorReport {
+    run_doctor_with_compiled_inputs(config, root, github, None)
+}
+
+/// Check reviewed agent inputs without compiling, activating workflows or reading secret values.
+///
+/// Callers must exclude concurrent filesystem writers, as with render and sync.
+#[must_use]
+pub fn run_doctor_with_compiled_inputs(
+    config: &FactoryConfig,
+    root: &Path,
+    github: &impl GitHubTransport,
+    compiled_inputs: Option<&Path>,
+) -> DoctorReport {
     let mut report = DoctorReport { checks: Vec::new() };
     check_local(config, root, &mut report);
+    agents::check_local(config, root, compiled_inputs, &mut report);
     let Some((owner, repository)) = split_repository(&config.repository) else {
         push(
             &mut report,
@@ -126,6 +140,7 @@ pub fn run_doctor(
     check_ruleset(github, &prefix, &mut report);
     check_repository_settings(github, &prefix, &mut report);
     check_actions_settings(github, &prefix, &mut report);
+    agents::check_remote(config, github, &prefix, &mut report);
     report
 }
 
@@ -165,10 +180,10 @@ fn check_local(config: &FactoryConfig, root: &Path, report: &mut DoctorReport) {
 
         for asset in module.assets {
             let path = root.join(asset.output_path);
-            let contents = fs::read(&path);
+            let contents = crate::render::read_regular(&path);
             let passed = contents
                 .as_ref()
-                .is_ok_and(|actual| actual.as_slice() == asset.contents);
+                .is_ok_and(|actual| actual.as_deref() == Some(asset.contents));
             push(
                 report,
                 &format!("local.asset.{}", stable_path(asset.output_path)),
@@ -176,7 +191,7 @@ fn check_local(config: &FactoryConfig, root: &Path, report: &mut DoctorReport) {
                 "matches the bundled module asset",
                 if passed {
                     "matches the bundled module asset".to_owned()
-                } else if contents.is_err() {
+                } else if !matches!(&contents, Ok(Some(_))) {
                     "file is missing or unreadable".to_owned()
                 } else {
                     "file differs from the bundled module asset".to_owned()
@@ -193,7 +208,7 @@ fn check_local(config: &FactoryConfig, root: &Path, report: &mut DoctorReport) {
 
 fn check_ci_contract(config: &FactoryConfig, root: &Path, report: &mut DoctorReport) {
     let path = root.join(".github/workflows/ci.yml");
-    let workflow = fs::read_to_string(path).unwrap_or_default();
+    let workflow = read_text(&path).unwrap_or_default();
     let checks = &config.modules.ci.required_checks;
     let checks_valid = !checks.is_empty()
         && checks
@@ -249,7 +264,7 @@ fn check_action_pins(root: &Path, report: &mut DoctorReport) {
         ".github/workflows/ci.yml",
         ".github/actions/setup-rust/action.yml",
     ] {
-        if let Ok(contents) = fs::read_to_string(root.join(path)) {
+        if let Ok(contents) = read_text(&root.join(path)) {
             action_lines.extend(
                 contents
                     .lines()
@@ -339,7 +354,7 @@ fn check_issue_forms(root: &Path, report: &mut DoctorReport) {
 
     for (filename, fields) in required_fields {
         let path = root.join(".github/ISSUE_TEMPLATE").join(filename);
-        let contents = fs::read_to_string(&path);
+        let contents = read_text(&path);
         let valid = contents.as_ref().is_ok_and(|form| {
             fields
                 .iter()
@@ -361,7 +376,7 @@ fn check_issue_forms(root: &Path, report: &mut DoctorReport) {
         );
     }
 
-    let config_form = fs::read_to_string(root.join(".github/ISSUE_TEMPLATE/config.yml"));
+    let config_form = read_text(&root.join(".github/ISSUE_TEMPLATE/config.yml"));
     let config_valid = config_form.is_ok_and(|form| form.contains("blank_issues_enabled: false"));
     push(
         report,
@@ -854,4 +869,11 @@ fn stable_path(value: &str) -> String {
             }
         })
         .collect()
+}
+
+fn read_text(path: &Path) -> Result<String, ()> {
+    let bytes = crate::render::read_regular(path)
+        .map_err(|_| ())?
+        .ok_or(())?;
+    String::from_utf8(bytes).map_err(|_| ())
 }

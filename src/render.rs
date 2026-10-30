@@ -14,6 +14,7 @@ pub use compiled::{
     validate_compiled_inputs,
 };
 pub use output::{RenderError, render_to_directory, render_to_directory_with_compiled_inputs};
+pub(crate) use sync::read_regular;
 pub use sync::{
     SyncError, SyncReport, init_repository, sync_repository, sync_repository_with_compiled_inputs,
 };

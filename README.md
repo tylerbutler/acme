@@ -20,6 +20,7 @@ just build
 just check
 cargo run -- doctor
 cargo run -- doctor --config path/to/factory.toml
+cargo run -- doctor --compiled-inputs /tmp/acme-agent-review
 cargo run --bin acme -- render --compiled-inputs /tmp/acme-agent-review --output /tmp/acme-render
 cargo run --bin acme -- sync --check --compiled-inputs /tmp/acme-agent-review
 ```
@@ -30,10 +31,27 @@ and tests. Doctor reports drift and repair guidance. It does not change local
 files. Default execution does not change GitHub settings. It does not verify
 token scopes, enforce path-author policy, or enforce model separation.
 
+When Intake or Build-cloud is enabled, supply `--compiled-inputs DIR` from a
+reviewed `acme compile` result for the same approved config and binary version.
+Doctor compares local workflow sources and the approval helper with the source
+plan. It validates the compiled review record and compares local locks with the
+captured bytes. Missing, stale or unsafe inputs produce unsuccessful checks.
+Doctor never invokes the compiler, inference or workflow jobs.
+
+Agent checks also inspect GitHub workflow state, activation variables and
+configured secret-name presence. They do not read secret values or verify
+token scopes or assignment capability. Reports keep configured model roles and
+runtime selection separate from usage evidence and unknown serving models.
+Doctor does not fetch usage logs or run paid credential or model verification.
+Missing activation variables count as off; failed API requests remain failures.
+Missing configured secrets fail checks even for inactive workflows.
+Stored credential flags do not replace fresh secret-name checks.
+
 With explicit owner approval, `cargo run -- doctor --fix` repairs supported
 managed labels, the named `main` ruleset, repository merge settings and Actions
-defaults. `--config PATH` also works with `--fix`. Fix requires authenticated
-repository-administration access. All requests use the configured repository.
+defaults. `--config PATH` and `--compiled-inputs DIR` also work with `--fix`.
+Fix requires authenticated repository-administration access.
+All requests use the configured repository.
 A conflicting checkout origin or API repository identity blocks the plan.
 An existing checkout needs an identifiable `github.com` origin.
 
