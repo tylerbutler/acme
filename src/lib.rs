@@ -1,3 +1,4 @@
+pub mod agent_catalog;
 pub mod assignment;
 pub mod catalog;
 pub mod claim_store;

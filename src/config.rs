@@ -189,6 +189,8 @@ pub struct EnginesConfig {
 pub struct EngineConfig {
     pub engine: String,
     pub token_secret: String,
+    pub controller_model: Option<ModelId>,
+    pub detection_model: Option<ModelId>,
 }
 
 #[derive(Debug, Deserialize, Eq, JsonSchema, PartialEq)]
@@ -197,6 +199,58 @@ pub struct BuildCloudEngineConfig {
     pub engine: String,
     pub model: String,
     pub token_secret: String,
+    pub controller_model: Option<ModelId>,
+    pub detection_model: Option<ModelId>,
+}
+
+/// A literal model identifier, never a workflow expression or YAML fragment.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq)]
+#[serde(try_from = "String")]
+pub struct ModelId(String);
+
+impl JsonSchema for ModelId {
+    fn schema_name() -> String {
+        "ModelId".to_owned()
+    }
+
+    fn json_schema(generator: &mut schemars::r#gen::SchemaGenerator) -> schemars::schema::Schema {
+        let mut schema = String::json_schema(generator).into_object();
+        let validation = schema.string();
+        validation.min_length = Some(1);
+        validation.max_length = Some(128);
+        validation.pattern = Some("^[A-Za-z0-9][A-Za-z0-9._-]*$".to_owned());
+        schema.into()
+    }
+}
+
+impl ModelId {
+    #[must_use]
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+
+    pub(crate) fn validate(value: &str) -> Result<(), &'static str> {
+        if value.len() > 128
+            || !value.starts_with(|character: char| character.is_ascii_alphanumeric())
+            || !value
+                .bytes()
+                .all(|byte| byte.is_ascii_alphanumeric() || b"._-".contains(&byte))
+        {
+            return Err(
+                "model must be 1..128 ASCII letters, digits, dots, underscores or hyphens, starting with a letter or digit",
+            );
+        }
+        Ok(())
+    }
+}
+
+impl TryFrom<String> for ModelId {
+    type Error = &'static str;
+
+    fn try_from(value: String) -> Result<Self, Self::Error> {
+        Self::validate(&value)?;
+        Ok(Self(value))
+    }
 }
 
 #[derive(Debug, Deserialize, Eq, JsonSchema, PartialEq)]
