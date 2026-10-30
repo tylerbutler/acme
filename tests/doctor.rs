@@ -7,7 +7,7 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::sync::atomic::{AtomicU64, Ordering};
 
 const ROOT: &str = env!("CARGO_MANIFEST_DIR");
 const REPOSITORY: &str = "repos/tylerbutler/acme";
@@ -591,11 +591,12 @@ fn copy_assets(root: &Path) {
 }
 
 fn temporary_root() -> PathBuf {
-    let timestamp = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .expect("clock after epoch")
-        .as_nanos();
-    std::env::temp_dir().join(format!("acme-doctor-{}-{timestamp}", std::process::id()))
+    static NEXT: AtomicU64 = AtomicU64::new(0);
+    std::env::temp_dir().join(format!(
+        "acme-doctor-{}-{}",
+        std::process::id(),
+        NEXT.fetch_add(1, Ordering::Relaxed)
+    ))
 }
 
 struct RepairGitHub {
