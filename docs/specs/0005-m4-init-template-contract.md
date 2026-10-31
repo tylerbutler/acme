@@ -11,6 +11,12 @@ an interview skill and deterministic `acme init`. Follow the
 [proposed M3 contract](https://github.com/tylerbutler/acme/pull/30).
 Reconcile this plan with the completed M2/M3 interfaces before coding.
 
+This milestone tests installation and portability. Acme's own approved work
+is the primary [factory-value test](0001-bootstrap.md#factory-value-and-portability).
+A sample init PR does not establish reduced development effort. Preserve
+recorded sample results and exceptions; this distinction does not reopen
+completed acceptance or approve another sample run.
+
 ## Contract
 
 - Ship a separate public template repository named `tylerbutler/acme-template`

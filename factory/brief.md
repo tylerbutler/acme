@@ -30,7 +30,16 @@ renderer. The renderer must reproduce the hand-built factory with zero diff.
 ## Current priority
 
 Schema and doctor exist. The next work is M3: render, sync and version pins.
-The renderer is the product; finish it before other milestones.
+Finish this deterministic foundation before other milestones. Rendering and
+sync support the product: a useful, maintained development process.
+
+Use acme itself as the primary test of factory value. Record owner effort,
+failed handoffs and PR usefulness during normal approved work. A reproducible
+factory or a successful issue-to-PR loop alone does not prove reduced effort.
+Review this evidence before preset expansion and address significant observed
+friction first. Use the existing acceptance record, not a new metrics system.
+Future implementation issues should name the manual step or failure they remove,
+or the downstream behavior that infrastructure work enables.
 
 After M5, expand the factory through
 [built-in presets](../docs/specs/0013-builtin-factory-presets.md) before the
@@ -40,6 +49,8 @@ TypeScript library to test reuse across project purpose and language. Share
 the deterministic engine and safety rules; keep project checks and CI setup
 preset-specific. Defer public plugins. This is planning direction, not a
 change to current Rust-only support or approval to build the presets.
+Samples and second projects test portability, not factory value. They do not
+replace self-use evidence or authorize new repositories, activation or paid runs.
 
 Automatic dispatch (specs 0010 and 0011) is paused. It saves one owner label
 per task but adds a large trust and maintenance surface. The owner-applied

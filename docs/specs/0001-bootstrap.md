@@ -60,7 +60,8 @@ blocked until the owner completes stage0 adoption under that spec. Automatic
 dispatch ([spec 0010](0010-spec-dispatch-coordinator.md)) is paused and is not
 on the path to any milestone below.
 
-After M5, complete the [built-in factory-preset expansion](0013-builtin-factory-presets.md)
+After M5, review the self-use evidence below, then complete the
+[built-in factory-preset expansion](0013-builtin-factory-presets.md)
 before the deferred M6–M8 work. Plan Rust library, TypeScript library, Gleam
 library and Astro website presets alongside the existing Rust CLI preset.
 Public plugins remain deferred. This direction does not approve implementation
@@ -73,7 +74,34 @@ or change the current Rust-only command contract.
 | M3 | Render, sync and version pinning | Zero golden diff, idempotent sync and clean version bump |
 | M4 | Thin template, interview skill and deterministic init | Brief to merged init PR on a sample project |
 | M5 | Rendered intake and build-cloud | No manual workflow drift; staged then live |
+| Self-use review | Factory-value evidence from acme's own approved work | Owner reviews effort, failures and PR usefulness before preset expansion |
 | Preset expansion | Built-in Rust library, TypeScript library, Gleam library and Astro website presets | Per-preset fixtures and safe sync; Rust library and TypeScript library first |
 | M6 | Review and isolated holdout | Block a seeded bad PR that passes CI |
 | M7 | Local builds, provenance, release and ops | Independent tasks through gated merges |
 | M8 | Second project from template | No hand edits to rendered files |
+
+## Factory value and portability
+
+Acme itself is the primary factory-value test. Keep three claims separate:
+M3/M5 byte and adoption checks prove reproducible configuration; approved live
+paths prove operation; self-use evidence tests whether the factory makes
+development easier and more reliable. M4 samples, preset fixtures and M8
+second-project qualification test portability.
+
+Use the [existing acceptance record](../bootstrap.md#factory-value-evidence)
+to link normal approved issues and PRs. Record owner interventions, repeated
+explanations, manual edits, failed handoffs and whether each PR met its
+acceptance scenarios. Compare with direct owner assignment when comparable
+evidence exists. Without a comparison, describe observed benefits and limits;
+do not claim measured savings.
+
+Before preset expansion implementation, the owner reviews the evidence and
+decides which significant friction must be addressed first. Missing evidence
+leaves this review incomplete. Planning and offline portability fixtures may
+continue, but successful generation does not satisfy the value checkpoint.
+This does not reopen completed milestone checks or authorize new event tests.
+
+For future implementation issues, name the observed manual step or failure
+the work removes in the goal, then verify that improvement in an acceptance
+scenario. Infrastructure work may instead name the downstream behavior it
+enables. Keep the existing short issue format and separate build approvals.

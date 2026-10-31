@@ -218,6 +218,33 @@ bounded child issues with their own goal, acceptance scenarios, non-goals and
 approved spec links. Only the owner may apply `ready-for-agent` to each child
 after its prerequisites are satisfied. Parent approval does not transfer.
 
+### Factory-value evidence
+
+Use acme's normal approved work to test factory value. Add observations to
+the existing acceptance record or linked issue/PR comments; do not create a
+separate metrics system. Link the issue, workflow runs, resulting PR and
+relevant config version or revision.
+
+For each observed path, record:
+
+- Owner interventions and active effort, separate from elapsed time and waits.
+- Repeated explanations, manual configuration edits and failed handoffs.
+- Whether the PR met its acceptance scenarios and what rework was required.
+- Benefits or added work compared with direct owner assignment, when comparable
+  evidence exists; otherwise, mark the comparison unavailable.
+
+Record failures and unknowns as well as successful paths. Do not infer measured
+savings from a completed loop, generated files or an unavailable comparison.
+Before preset expansion implementation, record the owner's review of benefits,
+significant unresolved friction and the next improvement. Missing evidence
+leaves the review incomplete.
+
+This records evidence, not approval. Normal work remains subject to its existing
+approvals; new test events, repositories, activation changes and paid acceptance
+runs still need separate owner approval. Historical acceptance results and
+exceptions remain unchanged. Sample projects test installation and portability,
+not factory value.
+
 ### Verified M0 loop
 
 The owner-approved live build loop passed on 2026-10-26:
