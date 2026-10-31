@@ -4,6 +4,11 @@ use std::path::{Component, Path};
 use toml::Value;
 
 pub(super) fn validate_config(config: &FactoryConfig) -> Result<(), SyncError> {
+    if config.profile != "cli" || config.languages != ["rust"] {
+        return Err(error(
+            "unsupported init preset: require profile cli and languages [rust]",
+        ));
+    }
     if config.toolchain.acme.bootstrap {
         return Err(error("init requires toolchain.acme.bootstrap = false"));
     }

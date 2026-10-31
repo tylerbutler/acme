@@ -520,6 +520,42 @@ fn invalid_config_or_plan_fails_before_creating_the_destination() {
 }
 
 #[test]
+fn render_rejects_library_preset_with_valid_library_config_without_writes() {
+    let workspace = Workspace::new();
+    let mut config: toml::Value =
+        toml::from_str(&fs::read_to_string(workspace.0.join("factory/factory.toml")).unwrap())
+            .unwrap();
+    config["profile"] = "library".into();
+    config["languages"] = vec!["rust"].into();
+    config["modules"]["ci"]["required_checks"] = vec!["CI"].into();
+    config["modules"]["ci"]["commands"] = vec![
+        "cargo fmt --all -- --check",
+        "cargo clippy --locked --all-targets --all-features -- -D warnings",
+        "cargo test --locked --all-features",
+        "cargo doc --locked --no-deps --all-features",
+    ]
+    .into();
+    config["modules"]["ci"]["step_names"] = vec!["Fmt", "Clippy", "Tests", "Docs"].into();
+    config["modules"]["review"]["enabled"] = false.into();
+    config["engines"]["review"]["enabled"] = false.into();
+    fs::write(
+        workspace.0.join("factory/factory.toml"),
+        toml::to_string(&config).unwrap(),
+    )
+    .unwrap();
+    let before = tree(&workspace.0);
+    let destination = workspace.0.join("library-output");
+    let output = workspace.render(&destination);
+    assert!(!output.status.success());
+    assert!(
+        String::from_utf8_lossy(&output.stderr)
+            .contains("unsupported render preset: require profile cli and languages [rust]")
+    );
+    assert_eq!(tree(&workspace.0), before);
+    assert!(!destination.exists());
+}
+
+#[test]
 fn render_requires_output_and_rejects_unknown_or_missing_arguments() {
     let workspace = Workspace::new();
     for args in [
