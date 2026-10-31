@@ -16,6 +16,12 @@ GitHub enables it by default, which can require an approval even in solo mode.
 
 Intake accepts admin-triggered issue opens during bootstrap. Its only writes
 are label and comment outputs. It cannot apply `ready-for-agent`.
+It checks issue detail and linked default-branch specs before proposing
+`needs-spec`. Explicit spec PR links need verified merge and changed-file
+evidence. Pending implementation dependencies alone are not specification gaps.
+Unavailable evidence is reported as unverified. Existing labels remain unchanged.
+Offline fixtures check prompt requirements and authority bounds, not model compliance.
+
 Build-cloud checks both the original actor and the rerun actor against the
 repository owner. Only the `ready-for-agent` label can trigger assignment.
 The owner can also assign Copilot directly, outside this workflow. That route

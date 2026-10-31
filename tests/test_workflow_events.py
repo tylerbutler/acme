@@ -305,12 +305,76 @@ class CompiledEventFixtures(WorkflowEventFixture, unittest.TestCase):
                 self.assertIn("\npermissions: {}\n", lock)
                 self.assertEqual(
                     block(block(lock, "agent", 2), "permissions", 4),
-                    "      contents: read\n      issues: read\n",
+                    "      contents: read\n      issues: read\n"
+                    + ("      pull-requests: read\n" if name == "intake" else ""),
                 )
                 expected = "      issues: write\n"
                 if name == "intake":
                     expected += "      pull-requests: write\n"
                 self.assertEqual(block(block(lock, "safe_outputs", 2), "permissions", 4), expected)
+
+    def test_intake_prompt_contract_fixtures_without_inference(self):
+        # These checks verify prompt requirements, not model compliance.
+        cases = json.loads((ROOT / "tests/fixtures/intake-classification.json").read_text())
+        for path in (
+            ".github/workflows/intake.md",
+            "modules/intake/assets/intake.md",
+        ):
+            source = " ".join((ROOT / path).read_text().split())
+            for case, requirements in cases.items():
+                with self.subTest(path=path, case=case):
+                    for requirement in requirements:
+                        self.assertIn(requirement, source)
+
+    def test_intake_inventory_hashes_match_reviewed_files(self):
+        record = json.loads((ROOT / "factory/managed-files.json").read_text())
+        entries = [entry for entry in record["entries"] if entry["module"] == "intake"]
+        self.assertEqual({entry["path"] for entry in entries}, {
+            ".github/workflows/intake.md", ".github/workflows/intake.lock.yml",
+        })
+        for entry in entries:
+            with self.subTest(path=entry["path"]):
+                self.assertEqual(
+                    hashlib.sha256((ROOT / entry["path"]).read_bytes()).hexdigest(),
+                    entry["sha256"],
+                )
+
+    def test_intake_compiled_evidence_tools_remain_read_only_and_bounded(self):
+        lock = self.locks["intake"]
+        manifest_line = next(
+            line for line in lock.splitlines() if line.startswith("# gh-aw-manifest: ")
+        )
+        manifest = json.loads(manifest_line.removeprefix("# gh-aw-manifest: "))
+        servers = {server["name"]: set(server["tools"]) for server in manifest["mcp_servers"]}
+        self.assertEqual(servers, {
+            "github": {
+                "get_label", "issue_read", "list_issue_types", "list_issues",
+                "list_label", "search_issues", "get_file_contents", "pull_request_read",
+            },
+            "safeoutputs": {
+                "add_comment", "add_labels", "noop", "report_incomplete",
+                "report_missing_data", "report_missing_tool",
+            },
+        })
+        self.assertEqual(
+            set(re.findall(r"--allow-tool github\((\w+)\)", lock)),
+            servers["github"],
+        )
+        self.assertNotRegex(lock, r"--allow-tool github(?:\s|$)")
+        self.assertIn('"GITHUB_READ_ONLY": "1"', block(lock, "agent", 2))
+        outputs = block(lock, "safe_outputs", 2)
+        config_line = re.search(r"^          GH_AW_SAFE_OUTPUTS_HANDLER_CONFIG: (.+)$", outputs, re.MULTILINE)
+        self.assertIsNotNone(config_line)
+        config = json.loads(json.loads(config_line[1]))
+        self.assertEqual(config, {
+            "add_comment": {"max": 1},
+            "add_labels": {"allowed": ["needs-spec", "bug", "idea"], "max": 1},
+            "create_report_incomplete_issue": {},
+            "noop": {"max": 2, "report-as-issue": "false"},
+            "report_incomplete": {},
+            "report_missing_data": {},
+            "report_missing_tool": {},
+        })
 
 
 class PinnedWorkflowEventProof(WorkflowEventFixture, unittest.TestCase):

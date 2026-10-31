@@ -55,12 +55,12 @@
     {
       "module": "intake",
       "path": ".github/workflows/intake.lock.yml",
-      "sha256": "e25604816670bb63d5ac6e412cf3a13aa451ea9d7928318568b348ba04921a99"
+      "sha256": "393dbe7fc0a05cc81e8a67b58b1cf11b52f7b7c26bc16511d6d1a740b7b6ad59"
     },
     {
       "module": "intake",
       "path": ".github/workflows/intake.md",
-      "sha256": "5b4c973ddb41e8c54a76acd17e31a04203861af039af9855747529c386920a9f"
+      "sha256": "bf7d16d655a10730da0e07cb87cfcb6f1f8e319a3af63fd995aea5c268a5b457"
     },
     {
       "module": "build_cloud",
