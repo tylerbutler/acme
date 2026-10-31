@@ -28,6 +28,10 @@ const GOLDENS: &[(&str, &[u8])] = &[
         include_bytes!("../.github/ISSUE_TEMPLATE/spec-request.yml"),
     ),
     (
+        ".github/ISSUE_TEMPLATE/tracking.yml",
+        include_bytes!("../.github/ISSUE_TEMPLATE/tracking.yml"),
+    ),
+    (
         ".github/actions/setup-rust/action.yml",
         include_bytes!("../.github/actions/setup-rust/action.yml"),
     ),
@@ -337,6 +341,7 @@ fn disabled_modules_remove_only_their_inventory() {
                 ".github/ISSUE_TEMPLATE/config.yml",
                 ".github/ISSUE_TEMPLATE/idea.yml",
                 ".github/ISSUE_TEMPLATE/spec-request.yml",
+                ".github/ISSUE_TEMPLATE/tracking.yml",
                 ".github/workflows/intake.md",
                 ".github/workflows/intake.lock.yml",
                 ".github/workflows/build-cloud.md",

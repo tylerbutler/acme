@@ -1,7 +1,7 @@
 name: Spec request
-description: Define a bounded task for a human-approved spec.
+description: Define a bounded task for a human-approved spec. Use the tracking form for multi-task proposals.
 title: "[spec] "
-labels: [needs-spec]
+labels: [needs-spec, task]
 body:
   - type: textarea
     id: goal

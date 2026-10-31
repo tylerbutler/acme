@@ -1441,6 +1441,53 @@ fn duplicate_managed_rulesets_fail_and_unrelated_rulesets_are_ignored() {
 }
 
 #[test]
+fn both_role_labels_are_checked_for_missing_color_and_description_drift() {
+    let config = agent_config();
+    for name in ["tracking", "task"] {
+        let id = format!("github.label.{name}");
+        let matching = run_doctor(&config, Path::new(ROOT), &FakeGitHub::matching());
+        assert!(check(&matching, &id).passed);
+        for field in [None, Some("color"), Some("description")] {
+            let mut github = FakeGitHub::matching();
+            let labels = github.responses.get_mut(LABELS).unwrap()[0]
+                .as_array_mut()
+                .unwrap();
+            if let Some(field) = field {
+                labels
+                    .iter_mut()
+                    .find(|label| label["name"] == name)
+                    .unwrap()[field] = json!("drift");
+            } else {
+                labels.retain(|label| label["name"] != name);
+            }
+            let report = run_doctor(&config, Path::new(ROOT), &github);
+            assert!(!check(&report, &id).passed);
+            let other = if name == "task" { "tracking" } else { "task" };
+            let other_id = format!("github.label.{other}");
+            assert!(check(&report, &other_id).passed);
+        }
+    }
+}
+
+#[test]
+fn tracking_completion_is_required_and_doctor_never_repairs_local_forms() {
+    let config = agent_config();
+    let root = temporary_root();
+    copy_assets(&root);
+    let path = root.join(".github/ISSUE_TEMPLATE/tracking.yml");
+    let original = fs::read_to_string(&path).expect("tracking form");
+    let report = run_doctor(&config, &root, &FakeGitHub::matching());
+    assert!(check(&report, "local.issue-forms.inventory").passed);
+    assert!(check(&report, "local.issue-form.tracking").passed);
+    let changed = original.replace("id: completion", "id: optional-completion");
+    fs::write(&path, &changed).unwrap();
+    let report = run_doctor(&config, &root, &FakeGitHub::matching());
+    assert!(!check(&report, "local.issue-form.tracking").passed);
+    assert_eq!(fs::read_to_string(path).unwrap(), changed);
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
 fn missing_or_duplicate_managed_labels_fail() {
     let config =
         FactoryConfig::load(Path::new(ROOT).join("factory/factory.toml")).expect("fixture config");

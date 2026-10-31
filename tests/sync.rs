@@ -13,6 +13,7 @@ const FACTORY: &str = include_str!("../factory/factory.toml");
 const RECORD: &str = "factory/managed-files.json";
 const CI: &str = ".github/workflows/ci.yml";
 const LABELS: &str = ".github/labels.yml";
+const TRACKING: &str = ".github/ISSUE_TEMPLATE/tracking.yml";
 
 struct Workspace(PathBuf, compiled_fixture::ReviewFixture);
 
@@ -156,12 +157,12 @@ fn sync_creates_sorted_hashed_inventory_and_second_sync_is_a_noop() {
     assert_eq!(record["format_version"], 1);
     assert_eq!(record["acme_version"], env!("CARGO_PKG_VERSION"));
     let all_entries = record["entries"].as_array().unwrap();
-    assert_eq!(all_entries.len(), 13);
+    assert_eq!(all_entries.len(), 14);
     let entries: Vec<_> = all_entries
         .iter()
         .filter(|entry| !matches!(entry["module"].as_str(), Some("intake" | "build_cloud")))
         .collect();
-    assert_eq!(entries.len(), 8);
+    assert_eq!(entries.len(), 9);
     let paths: Vec<_> = entries
         .iter()
         .map(|entry| entry["path"].as_str().unwrap())
@@ -321,6 +322,10 @@ fn matching_hand_built_files_are_adopted_but_check_does_not_adopt() {
     fs::rename(rendered.join(".github"), workspace.0.join(".github")).unwrap();
     fs::rename(rendered.join("scripts"), workspace.0.join("scripts")).unwrap();
     fs::remove_dir(rendered).unwrap();
+    assert_eq!(
+        fs::read(workspace.0.join(TRACKING)).unwrap(),
+        include_bytes!("../.github/ISSUE_TEMPLATE/tracking.yml")
+    );
     let before = tree(&workspace.0);
     let output = workspace.run(&["sync", "--check"]);
     fails(&output, "drift");
@@ -328,6 +333,13 @@ fn matching_hand_built_files_are_adopted_but_check_does_not_adopt() {
     assert_eq!(tree(&workspace.0), before);
     workspace.sync();
     assert!(workspace.0.join(RECORD).is_file());
+    assert!(
+        workspace.record()["entries"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|entry| entry["path"] == TRACKING && entry["module"] == "issue-forms")
+    );
     for (path, bytes) in before {
         assert_eq!(fs::read(workspace.0.join(path)).unwrap(), bytes);
     }
@@ -338,6 +350,7 @@ fn owned_updates_and_missing_outputs_are_checked_then_applied() {
     let workspace = Workspace::new();
     workspace.sync();
     fs::remove_file(workspace.0.join(LABELS)).unwrap();
+    fs::remove_file(workspace.0.join(TRACKING)).unwrap();
     workspace.change(|config| {
         config["modules"]["ci"]["step_names"][0] = "Changed step".into();
     });
@@ -346,6 +359,11 @@ fn owned_updates_and_missing_outputs_are_checked_then_applied() {
     fails(&output, "drift");
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(stdout.contains(&format!("create {LABELS}")));
+    assert!(
+        stdout
+            .lines()
+            .any(|line| line.split_once(' ') == Some(("create", TRACKING)))
+    );
     assert!(stdout.contains(&format!("update {CI}")));
     let changes: Vec<_> = stdout
         .lines()
@@ -364,6 +382,10 @@ fn owned_updates_and_missing_outputs_are_checked_then_applied() {
             .contains("Changed step")
     );
     assert!(workspace.0.join(LABELS).is_file());
+    assert_eq!(
+        fs::read(workspace.0.join(TRACKING)).unwrap(),
+        include_bytes!("../.github/ISSUE_TEMPLATE/tracking.yml")
+    );
     succeeds(&workspace.run(&["sync", "--check"]));
 }
 
@@ -386,10 +408,20 @@ fn disabling_intake_removes_only_recorded_outputs_and_keeps_directories() {
     let output = workspace.run(&["sync", "--check"]);
     fails(&output, "drift");
     assert!(String::from_utf8_lossy(&output.stdout).contains(&format!("remove {LABELS}")));
+    assert!(
+        String::from_utf8_lossy(&output.stdout)
+            .lines()
+            .any(|line| line.split_once(' ') == Some(("remove", TRACKING)))
+    );
     assert_eq!(tree(&workspace.0), before);
     workspace.sync();
     assert!(!workspace.0.join(LABELS).exists());
-    assert!(!workspace.0.join(".github/ISSUE_TEMPLATE/bug.yml").exists());
+    for name in ["bug", "idea", "spec-request", "tracking", "config"] {
+        let path = workspace
+            .0
+            .join(format!(".github/ISSUE_TEMPLATE/{name}.yml"));
+        assert!(!path.exists());
+    }
     assert!(workspace.0.join(".github/ISSUE_TEMPLATE").is_dir());
     assert_eq!(fs::read_to_string(unrelated).unwrap(), "keep");
     assert_eq!(
@@ -409,6 +441,66 @@ fn conflict_late_in_plan_leaves_earlier_outputs_unchanged() {
     fails(&workspace.run(&["sync"]), "unowned");
     assert_eq!(tree(&workspace.0), before);
     assert!(!workspace.0.join(".github/ISSUE_TEMPLATE").exists());
+}
+
+#[test]
+fn unowned_tracking_conflicts_block_adoption_before_any_writes() {
+    for contents in ["name: My tracker\n", ""] {
+        let workspace = Workspace::new();
+        fs::create_dir_all(workspace.0.join(".github/ISSUE_TEMPLATE")).unwrap();
+        fs::write(workspace.0.join(TRACKING), contents).unwrap();
+        let before = tree(&workspace.0);
+        for args in [&["sync"][..], &["sync", "--check"][..]] {
+            fails(&workspace.run(args), "unowned");
+            assert_eq!(tree(&workspace.0), before);
+            assert!(!workspace.0.join(RECORD).exists());
+        }
+    }
+}
+
+#[test]
+fn disabling_intake_keeps_unowned_tracking_form() {
+    let workspace = Workspace::new();
+    workspace.sync();
+    let mut record = workspace.record();
+    record["entries"]
+        .as_array_mut()
+        .unwrap()
+        .retain(|entry| entry["path"] != TRACKING);
+    workspace.write_record(&record);
+    fs::write(workspace.0.join(TRACKING), "human tracker\n").unwrap();
+    workspace.change(disable_intake);
+    let before = tree(&workspace.0);
+    let output = workspace.run(&["sync", "--check"]);
+    fails(&output, "drift");
+    assert!(!String::from_utf8_lossy(&output.stdout).contains(TRACKING));
+    assert_eq!(tree(&workspace.0), before);
+    workspace.sync();
+    assert_eq!(
+        fs::read(workspace.0.join(TRACKING)).unwrap(),
+        b"human tracker\n"
+    );
+    succeeds(&workspace.run(&["sync", "--check"]));
+}
+
+#[test]
+fn modified_owned_tracking_blocks_updates_and_removals_without_writes() {
+    for disabled in [false, true] {
+        let workspace = Workspace::new();
+        workspace.sync();
+        fs::write(workspace.0.join(TRACKING), "human edit\n").unwrap();
+        workspace.change(|config| {
+            if disabled {
+                disable_intake(config);
+            }
+            config["modules"]["ci"]["step_names"][0] = "Changed step".into();
+        });
+        let before = tree(&workspace.0);
+        for args in [&["sync"][..], &["sync", "--check"][..]] {
+            fails(&workspace.run(args), "modified owned");
+            assert_eq!(tree(&workspace.0), before);
+        }
+    }
 }
 
 #[test]

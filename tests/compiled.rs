@@ -164,6 +164,7 @@ fn full_reviewed_golden_render_adoption_and_check_never_invoke_compiler() {
         ".github/ISSUE_TEMPLATE/config.yml",
         ".github/ISSUE_TEMPLATE/idea.yml",
         ".github/ISSUE_TEMPLATE/spec-request.yml",
+        ".github/ISSUE_TEMPLATE/tracking.yml",
         ".github/actions/setup-rust/action.yml",
         ".github/labels.yml",
         ".github/rulesets/main.json",
@@ -186,7 +187,7 @@ fn full_reviewed_golden_render_adoption_and_check_never_invoke_compiler() {
             .values()
             .filter(|entry| matches!(entry, Snapshot::File(_)))
             .count(),
-        13
+        14
     );
     // Adopt the entire rendered tree, not just the workflow files.
     copy_tree(&workspace.0.join("rendered"), &workspace.0);
@@ -210,7 +211,7 @@ fn full_reviewed_golden_render_adoption_and_check_never_invoke_compiler() {
     );
     let record = fs::read(workspace.0.join(OWNERSHIP)).unwrap();
     let entries: Value = serde_json::from_slice(&record).unwrap();
-    assert_eq!(entries["entries"].as_array().unwrap().len(), 13);
+    assert_eq!(entries["entries"].as_array().unwrap().len(), 14);
     for output in &validated.outputs {
         assert!(
             entries["entries"].as_array().unwrap().iter().any(|entry| {
@@ -520,6 +521,7 @@ fn module_removal_uses_only_remaining_compilation_and_preserves_authored_files()
         ".github/ISSUE_TEMPLATE/config.yml",
         ".github/ISSUE_TEMPLATE/idea.yml",
         ".github/ISSUE_TEMPLATE/spec-request.yml",
+        ".github/ISSUE_TEMPLATE/tracking.yml",
     ] {
         assert!(!workspace.0.join(path).exists());
     }

@@ -114,6 +114,34 @@ state afterward.
 no YAML dependency. Use explicit doctor repairs for supported setting drift.
 Do not run the bootstrap tool as a repair: it disables live workflows and gates.
 
+## Owner-only issue-role rollout
+
+The role fixtures implement [spec 0016](specs/0016-issue-role-labels.md).
+They do not provision GitHub labels or execute the open-issue backfill.
+Both steps need separate owner approval. Do not use the bootstrap script:
+it changes settings outside this rollout.
+
+The authored label and task-form bytes change, but this implementation leaves
+`factory/managed-files.json` unchanged. The live record therefore retains the
+previous hashes; a sync conflict after these edits is expected, not adoption.
+Do not edit hashes or delete the record to bypass that conflict.
+
+For a separately reviewed local upgrade, use the approved release/pin procedure
+below. Start with owned files whose bytes match the existing record. Render
+with the approved new binary and compare the labels and forms with the reviewed
+fixtures. Supply reviewed compiled inputs when agent modules are enabled.
+Review `sync --check` before approving sync: only the labels, task forms,
+new tracking form and required metadata may change. Run sync again and require
+a clean check. If the starting bytes or record differ, stop for owner review.
+
+Before backfill, review the finite issue list in the implementation PR for #122.
+After separate approval, recheck each issue's open state, body, labels and
+classification discussion. Stop on changed inputs or conflicting roles.
+Add only the reviewed role label; skip an issue that already has that sole role.
+Preserve all other labels, titles, assignments and state. Do not touch closed
+issues. Record execution and repeat-run results in #122 or the implementation PR.
+Live form previews and the two issue-list filters remain human review checks.
+
 ## Owner-only M2 acceptance
 
 The M2 live exit check is not yet recorded. Implementation tests use fake remote

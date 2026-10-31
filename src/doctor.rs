@@ -318,7 +318,7 @@ fn check_action_pins(root: &Path, report: &mut DoctorReport) {
 }
 
 fn check_issue_forms(root: &Path, report: &mut DoctorReport) {
-    let required_fields: [(&str, &[&str]); 3] = [
+    let required_fields: [(&str, &[&str]); 4] = [
         ("idea.yml", &["goal", "acceptance", "non-goals"]),
         (
             "bug.yml",
@@ -328,6 +328,7 @@ fn check_issue_forms(root: &Path, report: &mut DoctorReport) {
             "spec-request.yml",
             &["goal", "acceptance", "non-goals", "risks"],
         ),
+        ("tracking.yml", &["goal", "completion", "non-goals"]),
     ];
     let form_assets: Vec<_> = builtin_modules()
         .iter()
@@ -340,7 +341,13 @@ fn check_issue_forms(root: &Path, report: &mut DoctorReport) {
         .filter_map(|asset| asset.output_path.rsplit('/').next())
         .collect();
     actual_names.sort_unstable();
-    let mut expected_names = vec!["bug.yml", "config.yml", "idea.yml", "spec-request.yml"];
+    let mut expected_names = vec![
+        "bug.yml",
+        "config.yml",
+        "idea.yml",
+        "spec-request.yml",
+        "tracking.yml",
+    ];
     expected_names.sort_unstable();
     let inventory_valid = actual_names == expected_names;
     push(

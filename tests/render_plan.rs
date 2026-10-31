@@ -96,6 +96,7 @@ fn plan_is_stable_and_orders_modules_paths_and_template_inputs() {
             ".github/ISSUE_TEMPLATE/config.yml",
             ".github/ISSUE_TEMPLATE/idea.yml",
             ".github/ISSUE_TEMPLATE/spec-request.yml",
+            ".github/ISSUE_TEMPLATE/tracking.yml",
             ".github/actions/setup-rust/action.yml",
             ".github/labels.yml",
             ".github/rulesets/main.json",

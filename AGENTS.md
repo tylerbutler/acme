@@ -136,6 +136,39 @@ checks spec evidence only; it does not approve scope or dispatch a builder.
 Do not restate human merge, draft PRs, `just check`, secrets, activation or
 paid-test limits in each issue.
 
+### Issue roles
+
+Each classified issue has exactly one role label:
+
+- `tracking` coordinates related issues, milestones or prerequisites. Link child
+  tasks and use a checklist when useful. Do not assign a builder or apply
+  `ready-for-agent` to the tracker itself.
+- `task` defines one bounded work item, including bug fixes, implementation,
+  documentation and planning. A task can need a spec or have unresolved
+  prerequisites. A blocked task is still a task. Human-only work stays human-only.
+
+Role and status are separate. Preserve the meanings of `needs-spec`, `blocked`,
+`in-progress`, `needs-human-review`, `bug`, `idea` and `ready-for-agent`.
+Neither role grants build approval, confirms spec coverage or proves that
+dependencies are complete. A tracker with a merged spec is still a tracker.
+Approval of a tracker does not approve its children.
+
+An issue with no role label is unclassified, not implicitly assignable.
+Both role labels mean a classification conflict. An author or maintainer must
+resolve it; do not infer a role from the title or silently choose one.
+Parent/sub-issue links do not set roles: a tracker can have no children yet,
+and a task can have no parent.
+
+An author or maintainer can explicitly change the role. Preserve relevant links
+and history, remove the old role and apply the new one. Do not change readiness
+or assignment as a side effect.
+
+Forms set their role label. With the API, `gh` or the blank issue editor, select
+the role explicitly. See the [examples and filters](README.md#issue-roles).
+This convention is an authoring rule, not a new machine-enforced assignment
+gate. Build-cloud and direct owner assignment remain unchanged; `tracking`
+does not mechanically prevent either route.
+
 ## Risk boundaries
 
 All changes need human merge during bootstrap.
