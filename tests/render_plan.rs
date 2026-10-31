@@ -385,8 +385,44 @@ fn unsupported_presets_and_enabled_stubs_fail() {
     configured.languages = vec!["python".to_owned()];
     assert!(build_render_plan(&configured).is_err());
     configured = config();
+    configured.profile = "library".to_owned();
+    assert!(build_render_plan(&configured).is_err());
+    configured = config();
+    configured.languages = vec!["rust".to_owned(), "rust".to_owned()];
+    assert!(build_render_plan(&configured).is_err());
+    configured = config();
+    configured.languages = vec!["rust".to_owned(), "typescript".to_owned()];
+    assert!(build_render_plan(&configured).is_err());
+    configured = config();
     configured.modules.review.enabled = true;
     assert!(build_render_plan(&configured).is_err());
+}
+
+#[test]
+fn render_plan_rejects_library_preset_even_with_full_library_contract() {
+    let mut configured = config();
+    configured.profile = "library".to_owned();
+    configured.languages = vec!["rust".to_owned()];
+    configured.modules.ci.required_checks = vec!["CI".to_owned()];
+    configured.modules.ci.commands = vec![
+        "cargo fmt --all -- --check".to_owned(),
+        "cargo clippy --locked --all-targets --all-features -- -D warnings".to_owned(),
+        "cargo test --locked --all-features".to_owned(),
+        "cargo doc --locked --no-deps --all-features".to_owned(),
+    ];
+    configured.modules.ci.step_names = vec![
+        "Fmt".to_owned(),
+        "Clippy".to_owned(),
+        "Test".to_owned(),
+        "Doc".to_owned(),
+    ];
+    configured.modules.review.enabled = false;
+    configured.engines.review.enabled = false;
+    let error = build_render_plan(&configured).unwrap_err().to_string();
+    assert_eq!(
+        error,
+        "unsupported render preset: require profile cli and languages [rust]"
+    );
 }
 
 #[test]

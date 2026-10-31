@@ -314,7 +314,9 @@ fn invalid_config_contracts_fail_without_writes() {
         ("schema_version", "", 99.into(), "schema version"),
         ("autonomy", "", "L4".into(), "L3"),
         ("profile", "", "web".into(), "preset"),
+        ("profile", "", "library".into(), "preset"),
         ("languages", "", vec!["python"].into(), "preset"),
+        ("languages", "", vec!["rust", "rust"].into(), "preset"),
         ("toolchain.acme", "bootstrap", true.into(), "bootstrap"),
         (
             "toolchain.acme",
@@ -415,6 +417,47 @@ fn malformed_project_inputs_and_unsupported_layouts_fail_without_writes() {
         workspace.write(path, bytes);
         workspace.rejects(&["init"], message);
     }
+}
+
+#[test]
+fn init_rejects_library_preset_even_with_valid_library_project_without_writes() {
+    let workspace = Workspace::new();
+    fs::remove_file(workspace.0.join("src/main.rs")).unwrap();
+    workspace.write(
+        "src/lib.rs",
+        "/// returns one\npub fn sample() -> u32 { 1 }\n\n#[cfg(test)]\nmod tests {\n    use super::sample;\n\n    #[test]\n    fn unit() {\n        assert_eq!(sample(), 1);\n    }\n}\n",
+    );
+    workspace.write(
+        "tests/integration.rs",
+        "use sample::sample;\n#[test]\nfn integration() { assert_eq!(sample(), 1); }\n",
+    );
+    workspace.write(
+        "rust-toolchain.toml",
+        "[toolchain]\nchannel = \"1.85\"\ncomponents = [\"rustfmt\", \"clippy\"]\n",
+    );
+    workspace.write(
+        "Cargo.toml",
+        "[package]\nname = \"sample\"\nversion = \"0.1.0\"\nedition = \"2024\"\n[lib]\ncrate-type = [\"lib\"]\n[[test]]\nname = \"integration\"\npath = \"tests/integration.rs\"\n",
+    );
+    workspace.change(|config| {
+        config["profile"] = "library".into();
+        config["languages"] = vec!["rust"].into();
+        config["modules"]["ci"]["required_checks"] = vec!["CI"].into();
+        config["modules"]["ci"]["commands"] = vec![
+            "cargo fmt --all -- --check",
+            "cargo clippy --locked --all-targets --all-features -- -D warnings",
+            "cargo test --locked --all-features",
+            "cargo doc --locked --no-deps --all-features",
+        ]
+        .into();
+        config["modules"]["ci"]["step_names"] = vec!["Fmt", "Clippy", "Tests", "Docs"].into();
+        config["modules"]["review"]["enabled"] = false.into();
+        config["engines"]["review"]["enabled"] = false.into();
+    });
+    workspace.rejects(
+        &["init"],
+        "unsupported init preset: require profile cli and languages [rust]",
+    );
 }
 
 #[test]

@@ -207,6 +207,35 @@ fn rejected_version_pins_block_sync_and_check_without_writes() {
 }
 
 #[test]
+fn sync_rejects_library_preset_without_writes() {
+    let workspace = Workspace::new();
+    workspace.change(|config| {
+        config["profile"] = "library".into();
+        config["languages"] = vec!["rust"].into();
+        config["modules"]["ci"]["required_checks"] = vec!["CI"].into();
+        config["modules"]["ci"]["commands"] = vec![
+            "cargo fmt --all -- --check",
+            "cargo clippy --locked --all-targets --all-features -- -D warnings",
+            "cargo test --locked --all-features",
+            "cargo doc --locked --no-deps --all-features",
+        ]
+        .into();
+        config["modules"]["ci"]["step_names"] = vec!["Fmt", "Clippy", "Tests", "Docs"].into();
+        config["modules"]["review"]["enabled"] = false.into();
+        config["engines"]["review"]["enabled"] = false.into();
+    });
+    let before = tree(&workspace.0);
+    for args in [&["sync"][..], &["sync", "--check"][..]] {
+        let output = workspace.run(args);
+        fails(
+            &output,
+            "unsupported render preset: require profile cli and languages [rust]",
+        );
+        assert_eq!(tree(&workspace.0), before);
+    }
+}
+
+#[test]
 fn bootstrap_sync_keeps_bypassing_version_enforcement() {
     let workspace = Workspace::new();
     workspace.change(|config| {
