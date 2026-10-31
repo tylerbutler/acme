@@ -8,7 +8,7 @@ solo = true
 
 [toolchain.acme]
 bootstrap = false
-target_version = "0.1.0"
+target_version = "0.4.0"
 
 [toolchain.gh_aw]
 version = "v0.93.5"
