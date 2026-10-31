@@ -1,0 +1,45 @@
+name: Tracking issue
+description: Coordinate related work. Do not assign this issue to a builder or apply ready-for-agent.
+labels: [tracking]
+body:
+  - type: textarea
+    id: goal
+    attributes:
+      label: Goal
+      description: State the shared outcome this issue coordinates.
+    validations:
+      required: true
+  - type: textarea
+    id: completion
+    attributes:
+      label: Completion checks
+      description: List the concrete checks that close this tracker. Build approval does not transfer to child tasks.
+    validations:
+      required: true
+  - type: textarea
+    id: children
+    attributes:
+      label: Child issues
+      description: Link child tasks in a checklist. This can be empty when the tracker is first opened.
+      placeholder: |
+        - [ ] #123
+        - [ ] #124
+    validations:
+      required: false
+  - type: textarea
+    id: spec
+    attributes:
+      label: Spec and prerequisites
+      description: Optionally link relevant specs and prerequisite issues.
+      placeholder: |
+        Spec: https://github.com/OWNER/REPO/blob/DEFAULT_BRANCH/docs/specs/NAME.md
+        Prerequisites:
+    validations:
+      required: false
+  - type: textarea
+    id: non-goals
+    attributes:
+      label: Non-goals
+      description: State what this tracker does not coordinate.
+    validations:
+      required: true

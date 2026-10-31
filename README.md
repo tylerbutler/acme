@@ -19,6 +19,49 @@ expansion starts with Rust library and TypeScript library, before the deferred
 M6–M8 work. Public plugins are deferred. Only Rust CLI is supported today;
 see the [preset expansion plan](docs/specs/0013-builtin-factory-presets.md).
 
+## Issue roles
+
+Use the **Tracking issue** form to coordinate several tasks, a milestone or
+prerequisites. Link child issues when they exist; the initial list can be empty.
+Use the bug, idea or spec-request form for one bounded **task**. Their existing
+title prefixes describe the request category, not its role.
+
+For example, #113 and #114 coordinate preset work (`tracking`). Their bounded
+implementation slices, #116–#119, are `task` issues, even when blocked.
+Planning and documentation can also be tasks. Human-only work stays human-only.
+
+For API, `gh` and blank-editor issues, choose exactly one role explicitly:
+
+```sh
+gh issue create --repo OWNER/REPO --title "Coordinate library support" --body "..." --label tracking
+gh issue create --repo OWNER/REPO --title "Document library prerequisites" --body "..." --label task
+```
+
+Replace the example bodies with a goal, acceptance scenarios and non-goals.
+Filter issue lists with:
+
+- `is:issue is:open label:tracking`
+- `is:issue is:open label:task`
+
+An issue with no role label is unclassified. Both labels mean a conflict for
+an author or maintainer to resolve. Titles and parent links do not determine
+roles.
+For an explicit role change, preserve relevant links and history, remove the
+old role and add the new one. Leave status labels and assignments unchanged.
+
+Roles do not grant readiness, spec coverage or approval. A merged spec does
+not turn a tracker into a task, and tracker approval does not approve children.
+Do not assign a builder or add `ready-for-agent` to a tracker. This is an
+authoring rule, not an assignment gate; the existing owner approval routes
+remain unchanged. See [the full role guidance](AGENTS.md#issue-roles).
+
+The label fixture does not install live labels. Provisioning and open-issue
+backfill each need separate owner approval under
+[spec 0016](docs/specs/0016-issue-role-labels.md). Review the finite backfill plan
+in the implementation PR for #122 and the
+[owner-only rollout procedure](docs/bootstrap.md#owner-only-issue-role-rollout).
+Live form previews and issue-list usability remain human review checks.
+
 ## Development
 
 ```sh

@@ -128,7 +128,7 @@ fn omitted_models_reproduce_reviewed_sources_and_only_declare_compiler_ownership
     assert_eq!(plan.runtime_tools, ["gh", "python3"]);
     assert_eq!(fs::read_dir(&workspace.0).unwrap().count(), 2);
     assert_eq!(acme::builtin_modules().len(), 4);
-    assert_eq!(build_render_plan(&config).unwrap().outputs.len(), 8);
+    assert_eq!(build_render_plan(&config).unwrap().outputs.len(), 9);
     assert_eq!(agent_modules().len(), 2);
 }
 

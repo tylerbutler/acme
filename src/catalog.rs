@@ -88,6 +88,10 @@ const MODULES: [BuiltinModule; 4] = [
                 contents: include_bytes!("../modules/issue-forms/assets/spec-request.yml"),
             },
             ModuleAsset {
+                output_path: ".github/ISSUE_TEMPLATE/tracking.yml",
+                contents: include_bytes!("../modules/issue-forms/assets/tracking.yml"),
+            },
+            ModuleAsset {
                 output_path: ".github/ISSUE_TEMPLATE/config.yml",
                 contents: include_bytes!("../modules/issue-forms/assets/config.yml"),
             },

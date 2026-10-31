@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file.
 
 ## [unreleased]
 
+### Features
+
+- Add `tracking` and `task` issue-role labels, a tracking form and role guidance
+  to the managed issue forms.
+
 ### Bug Fixes
 
 - Prepare version 0.4.0 with scoped actionlint compatibility for valid generated

@@ -1,4 +1,6 @@
 [
+  {"name": "tracking", "color": "5319E7", "description": "Coordinates work; not an agent build task"},
+  {"name": "task", "color": "C5DEF5", "description": "One work item; not build approval"},
   {"name": "needs-spec", "color": "D4C5F9", "description": "Needs an explicit spec and acceptance scenarios"},
   {"name": "ready-for-agent", "color": "0E8A16", "description": "Owner-approved scope; only the owner may apply"},
   {"name": "in-progress", "color": "1D76DB", "description": "An approved task is being built"},

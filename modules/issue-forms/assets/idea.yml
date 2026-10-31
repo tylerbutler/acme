@@ -1,7 +1,7 @@
 name: Idea
-description: Propose a change before writing a spec.
+description: Propose a change before writing a spec. Use the tracking form for multi-task proposals.
 title: "[idea] "
-labels: [idea, needs-spec]
+labels: [idea, needs-spec, task]
 body:
   - type: textarea
     id: goal

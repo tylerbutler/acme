@@ -1,7 +1,7 @@
 name: Bug
-description: Report incorrect behavior with a reproducible case.
+description: Report incorrect behavior with a reproducible case. Use the tracking form for multi-task proposals.
 title: "[bug] "
-labels: [bug, needs-spec]
+labels: [bug, needs-spec, task]
 body:
   - type: textarea
     id: goal
