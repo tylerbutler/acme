@@ -51,9 +51,17 @@ broader project support does not authorize arbitrary shell execution.
 
 ## Delivery sequence
 
-Add a factory-preset expansion phase after M5 and before the deferred M6–M8
-work. This changes the roadmap, not current workflow enablement or approvals.
-Automatic dispatch remains paused.
+Add a factory-preset expansion phase after M5, the
+[self-use value review](0001-bootstrap.md#factory-value-and-portability),
+and before the deferred M6–M8 work. Before the first expansion implementation,
+the owner reviews acme's own effort, failure and PR-usefulness evidence and
+decides which significant friction must be addressed first. Missing evidence
+leaves that review incomplete. Planning and offline fixtures may continue.
+
+Preset fixtures and second-project runs test portability; they do not replace
+self-use evidence or prove reduced development effort. This changes the
+roadmap, not current workflow enablement or approvals. Automatic dispatch
+remains paused.
 
 | Slice | Target | What it proves |
 | --- | --- | --- |

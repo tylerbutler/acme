@@ -192,6 +192,32 @@ agent-author/path restrictions.
    including real assignment, draft PR, CI and human merge. Staged inference
    is still paid; planning or golden success does not authorize these tests.
 
+## Factory-value evidence
+
+Keep the zero-diff adoption and event-path acceptance above unchanged. These
+checks prove reproducibility and operation, not reduced owner effort.
+Acme itself is the primary value test; sample projects test portability.
+
+Alongside the existing acceptance evidence, record normal approved acme work
+using the [factory-value record](../bootstrap.md#factory-value-evidence).
+Link issues, workflow runs and PRs; record owner interventions, repeated
+explanations, manual edits, failed handoffs and whether the resulting PR met
+its acceptance scenarios. Keep owner effort separate from elapsed time,
+workflow waits and configured runtime targets.
+
+Compare with direct owner assignment when comparable evidence is available.
+Do not start extra builds to create a comparison. If evidence is unavailable,
+state that limit and do not claim measured savings. Before preset expansion
+implementation, the owner reviews benefits, unresolved friction and the next
+improvement. Missing evidence keeps this value review incomplete, without
+changing the technical acceptance results.
+
+Use normal work only within existing approvals. Synthetic events, staged/live
+acceptance runs, new repositories and activation changes still need separate
+owner approval. Do not add telemetry, a score system or a new approval ledger.
+Changes to Intake or Build-cloud behavior need their own bounded spec and
+approved issue; this evidence requirement does not authorize such changes.
+
 ## Dependencies and implementation approval
 
 M3 implementation and stage0 adoption are complete:
