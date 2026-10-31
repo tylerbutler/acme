@@ -10,6 +10,7 @@ pub mod dispatch;
 pub mod doctor;
 pub mod github_state;
 pub mod manifest;
+mod presets;
 pub mod render;
 
 pub use catalog::{BuiltinModule, ConfigBinding, ModuleAsset, builtin_modules};

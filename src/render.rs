@@ -1,3 +1,4 @@
+use crate::presets::{BuiltinPreset, select_builtin_preset};
 use crate::{BuiltinModule, ConfigBinding, FactoryConfig, ModuleManifest, builtin_modules};
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
@@ -248,7 +249,7 @@ fn validate_config(config: &FactoryConfig) -> Result<(), RenderPlanError> {
             env!("CARGO_PKG_VERSION"),
         )));
     }
-    if config.profile != "cli" || config.languages != ["rust"] {
+    if select_builtin_preset(&config.profile, &config.languages) != Ok(BuiltinPreset::RustCli) {
         return Err(RenderPlanError(
             "unsupported render preset: require profile cli and languages [rust]".to_owned(),
         ));
