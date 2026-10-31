@@ -66,8 +66,8 @@ remains paused.
 | Slice | Target | What it proves |
 | --- | --- | --- |
 | Baseline | Rust CLI | Existing output and behavior stay compatible |
-| 1 | Rust library | Project purpose can change without changing language |
-| 2 | TypeScript library | Shared factory behavior works outside Cargo |
+| 1 | [Rust library](0014-rust-library-preset.md) | Project purpose can change without changing language |
+| 2 | [TypeScript library](0015-typescript-library-preset.md) | Shared factory behavior works outside Cargo |
 | 3 | Gleam library | Another toolchain fits the established boundary |
 | 4 | Astro website | Framework-specific checks fit a non-library project |
 
