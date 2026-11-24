@@ -27,9 +27,10 @@ supported Rust CLI project. It rejects configured projects and directs them to
 sync. It does not activate agent stages or perform remote operations.
 Explicit `doctor --fix` repairs
 supported remote drift after plan validation and then runs fresh checks.
-M3 rendering is the current priority. Automatic dispatch (specs 0010 and 0011)
-is paused; do not extend the coordinator, claims or claim store unless the owner
-reprioritizes it. The `src/` dispatch modules stay as they are, unused.
+The next priority is the [manual PR review pilot](docs/specs/0017-pr-review-handoff.md)
+on acme itself. Preset expansion is paused. Automatic dispatch (specs 0010 and
+0011) stays paused; do not extend the coordinator, claims or claim store unless
+the owner reprioritizes dispatch. The `src/` dispatch modules stay unused.
 Read `factory/brief.md` and `docs/specs/0001-bootstrap.md` first.
 Read `docs/specs/0002-m1-config-contract.md` before M1 config, schema or manifest
 work. Implement only after the spec is merged and the owner approves the issue.

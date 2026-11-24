@@ -231,6 +231,9 @@ the existing acceptance record or linked issue/PR comments; do not create a
 separate metrics system. Link the issue, workflow runs, resulting PR and
 relevant config version or revision.
 
+For the [PR review pilot](specs/0017-pr-review-handoff.md), use the
+[pilot observation and decision format](superpowers/plans/2026-11-24-pr-review-pilot.md#observe-normal-work).
+
 For each observed path, record:
 
 - Owner interventions and active effort, separate from elapsed time and waits.

@@ -1,8 +1,9 @@
 # Project brief
 
-Build `acme`, a single Rust binary that configures a software factory for a
-GitHub repository. Its users are maintainers who want explicit specs, repeatable
-workflows and human-controlled automation.
+Acme is a software factory for GitHub repositories. Its next job is to help
+the owner of acme itself decide whether a PR meets its approved issue without
+having to reconstruct the builder's work. The existing Rust CLI configures
+the factory; the next iteration need not change the binary.
 
 The binary reads approved TOML and performs deterministic work. It never calls
 an LLM. An agent skill conducts the interview and drafts config. Durable assets
@@ -29,32 +30,14 @@ renderer. The renderer must reproduce the hand-built factory with zero diff.
 
 ## Current priority
 
-Schema and doctor exist. The next work is M3: render, sync and version pins.
-Finish this deterministic foundation before other milestones. Rendering and
-sync support the product: a useful, maintained development process.
+Start with a [manual PR review pilot](../docs/specs/0017-pr-review-handoff.md).
+The builder uses the approved issue's acceptance scenarios to plan checks,
+then shows the owner what those checks established and what remains unknown.
+Use ordinary approved work and the existing acceptance record to find out
+whether this saves owner review time without hiding missed criteria.
 
-Use acme itself as the primary test of factory value. Record owner effort,
-failed handoffs and PR usefulness during normal approved work. A reproducible
-factory or a successful issue-to-PR loop alone does not prove reduced effort.
-Review this evidence before preset expansion and address significant observed
-friction first. Use the existing acceptance record, not a new metrics system.
-Future implementation issues should name the manual step or failure they remove,
-or the downstream behavior that infrastructure work enables.
-
-After M5, expand the factory through
-[built-in presets](../docs/specs/0013-builtin-factory-presets.md) before the
-deferred M6–M8 work. The targets are Rust CLI, Rust library, TypeScript library,
-Gleam library and Astro website. Start expansion with Rust library and
-TypeScript library to test reuse across project purpose and language. Share
-the deterministic engine and safety rules; keep project checks and CI setup
-preset-specific. Defer public plugins. This is planning direction, not a
-change to current Rust-only support or approval to build the presets.
-Samples and second projects test portability, not factory value. They do not
-replace self-use evidence or authorize new repositories, activation or paid runs.
-
-Automatic dispatch (specs 0010 and 0011) is paused. It saves one owner label
-per task but adds a large trust and maintenance surface. The owner-applied
-`ready-for-agent` label and direct owner assignment stay the build approvals. Revisit automatic
-dispatch only after M5, and only if manual labeling is a real bottleneck.
-Start with the simplest exclusion that works, such as an Actions concurrency
-group, before a signed journal.
+Maintain the installed CLI and workflows. Pause
+[preset expansion](../docs/specs/0013-builtin-factory-presets.md); keep
+automatic dispatch and M6–M8 deferred. The pilot is human review, not the
+automated Review stage. If a template paragraph and builder instruction
+are enough, keep them without adding software.

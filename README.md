@@ -13,11 +13,12 @@ validated module inventory paths in the current repository. `init` prepares a
 local change set from approved config for a supported Rust CLI project.
 Automatic dispatch is paused.
 
-**Planned project support:** built-in presets for Rust CLI, Rust library,
-TypeScript library, Gleam library and Astro website projects. After M5,
-expansion starts with Rust library and TypeScript library, before the deferred
-M6–M8 work. Public plugins are deferred. Only Rust CLI is supported today;
-see the [preset expansion plan](docs/specs/0013-builtin-factory-presets.md).
+**Next iteration:** Try a [manual PR review pilot](docs/specs/0017-pr-review-handoff.md)
+on acme's own approved changes. Can the owner tell what a PR demonstrates,
+and what still needs a decision, with less review work? The pilot starts
+with a PR-template paragraph and a builder instruction, not a CLI feature.
+Rust CLI remains the only supported preset.
+[Preset expansion](docs/specs/0013-builtin-factory-presets.md) is paused.
 
 ## Development
 
