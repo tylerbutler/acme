@@ -54,18 +54,12 @@ Do not claim that CODEOWNERS enforces `never-agent`.
 
 ## Next milestones
 
-M1, M2 and M3 implementation are merged. M4 planning can proceed from
-[spec 0005](0005-m4-init-template-contract.md). M4 implementation remains
-blocked until the owner completes stage0 adoption under that spec. Automatic
-dispatch ([spec 0010](0010-spec-dispatch-coordinator.md)) is paused and is not
-on the path to any milestone below.
-
-After M5, review the self-use evidence below, then complete the
-[built-in factory-preset expansion](0013-builtin-factory-presets.md)
-before the deferred M6–M8 work. Plan Rust library, TypeScript library, Gleam
-library and Astro website presets alongside the existing Rust CLI preset.
-Public plugins remain deferred. This direction does not approve implementation
-or change the current Rust-only command contract.
+The table preserves the M1–M5 deliverables and their original exit checks.
+See the [bootstrap record](../bootstrap.md) for results and exceptions:
+the owner [accepted M5 without dedicated staged/live runs](https://github.com/tylerbutler/acme/issues/95).
+The next iteration is the [manual PR review pilot](0017-pr-review-handoff.md)
+on acme itself. Preset expansion, automatic dispatch and M6–M8 are not
+prerequisites for it and remain paused or deferred.
 
 | Milestone | Deliverable | Exit check |
 | --- | --- | --- |
@@ -74,8 +68,8 @@ or change the current Rust-only command contract.
 | M3 | Render, sync and version pinning | Zero golden diff, idempotent sync and clean version bump |
 | M4 | Thin template, interview skill and deterministic init | Brief to merged init PR on a sample project |
 | M5 | Rendered intake and build-cloud | No manual workflow drift; staged then live |
-| Self-use review | Factory-value evidence from acme's own approved work | Owner reviews effort, failures and PR usefulness before preset expansion |
-| Preset expansion | Built-in Rust library, TypeScript library, Gleam library and Astro website presets | Per-preset fixtures and safe sync; Rust library and TypeScript library first |
+| Next: PR review pilot | Builder links each acceptance claim to evidence or identifies the gap | Owner compares review effort and missed criteria, then keeps, revises or stops the practice |
+| Preset expansion (paused) | Built-in Rust library, TypeScript library, Gleam library and Astro website presets | Per-preset fixtures and safe sync if the owner resumes this work |
 | M6 | Review and isolated holdout | Block a seeded bad PR that passes CI |
 | M7 | Local builds, provenance, release and ops | Independent tasks through gated merges |
 | M8 | Second project from template | No hand edits to rendered files |
@@ -95,11 +89,10 @@ acceptance scenarios. Compare with direct owner assignment when comparable
 evidence exists. Without a comparison, describe observed benefits and limits;
 do not claim measured savings.
 
-Before preset expansion implementation, the owner reviews the evidence and
-decides which significant friction must be addressed first. Missing evidence
-leaves this review incomplete. Planning and offline portability fixtures may
-continue, but successful generation does not satisfy the value checkpoint.
-This does not reopen completed milestone checks or authorize new event tests.
+The [owner's self-use review](https://github.com/tylerbutler/acme/issues/113#issuecomment-6538120618)
+found useful deliveries and rework, but no comparable owner-time baseline.
+The pilot addresses that gap. Its outcome does not restart the preset roadmap
+or reopen completed milestone checks.
 
 For future implementation issues, name the observed manual step or failure
 the work removes in the goal, then verify that improvement in an acceptance
